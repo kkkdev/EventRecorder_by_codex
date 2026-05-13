@@ -1,0 +1,16 @@
+.DS_Store
+.build/
+.swiftpm/
+build/
+DerivedData/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+EventRecorder.xcodeproj/
+*.xcuserstate
+*.xcscmblueprint
+.env
+.env.*
+!.env.example
+*.log
+.vscode/
+.idea/

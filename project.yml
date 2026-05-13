@@ -1,0 +1,58 @@
+name: EventRecorder
+options:
+  minimumXcodeGenVersion: 2.38.0
+settings:
+  base:
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+    SWIFT_VERSION: "5.10"
+configs:
+  Debug: debug
+  Release: release
+targets:
+  EventRecorder:
+    type: application
+    platform: macOS
+    sources:
+      - path: EventRecorder/App
+      - path: EventRecorder/Domain
+      - path: EventRecorder/Application
+      - path: EventRecorder/Infrastructure
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.eventrecorder.EventRecorder
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: EventRecorder/Info.plist
+        CODE_SIGN_STYLE: Automatic
+    entitlements:
+      path: EventRecorder/EventRecorder.entitlements
+    dependencies:
+      - framework: ScreenCaptureKit.framework
+      - framework: AVFoundation.framework
+      - framework: AppKit.framework
+      - framework: CoreMedia.framework
+      - framework: ImageIO.framework
+      - framework: UniformTypeIdentifiers.framework
+      - framework: WebKit.framework
+      - framework: UserNotifications.framework
+  EventRecorderTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: EventRecorderTests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/EventRecorder.app/Contents/MacOS/EventRecorder"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+    dependencies:
+      - target: EventRecorder
+  EventRecorderUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - path: EventRecorderUITests
+    settings:
+      base:
+        TEST_TARGET_NAME: EventRecorder
+    dependencies:
+      - target: EventRecorder

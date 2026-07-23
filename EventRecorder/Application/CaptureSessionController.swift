@@ -44,6 +44,7 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
     @Published public private(set) var state: CaptureState = .idle
     @Published public private(set) var availableTargets: [CaptureTarget] = []
     @Published public private(set) var lastErrorMessage: String?
+    @Published public private(set) var lastWarningMessage: String?
 
     private let permissionManager: PermissionManaging
     private let screenCaptureService: ScreenCaptureServiceProtocol
@@ -57,6 +58,7 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
 
     private var latestVideoSampleBuffer: CMSampleBuffer?
     private var activeSession: ActiveSession?
+    private var finalizationGate = CaptureFinalizationGate()
 
     public init(
         permissionManager: PermissionManaging = PermissionManager(),
@@ -94,6 +96,7 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
         DispatchQueue.main.async {
             self.state = .preparing
             self.lastErrorMessage = nil
+            self.lastWarningMessage = nil
         }
 
         do {
@@ -109,19 +112,29 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
                 self.state = .capturing
             }
         } catch {
-            await screenCaptureService.stopCapture()
+            try? await screenCaptureService.stopCapture()
             snapshotScheduler.stop()
+            clearCaptureCallbacks()
             cleanupSessionDirectoryIfEmpty()
             ioQueue.sync {
                 audioFileWriter.stop()
                 activeSession = nil
+            }
+            sampleQueue.sync {
+                latestVideoSampleBuffer = nil
             }
             handleFailure(error)
         }
     }
 
     public func stop() async {
-        guard state.isRunning || isCapturingState else {
+        guard state.canStop else {
+            return
+        }
+        let shouldFinalize = ioQueue.sync {
+            finalizationGate.begin()
+        }
+        guard shouldFinalize else {
             return
         }
 
@@ -130,16 +143,23 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
         }
 
         snapshotScheduler.stop()
-        await screenCaptureService.stopCapture()
-        screenCaptureService.onVideoSampleBuffer = nil
-        screenCaptureService.onAudioSampleBuffer = nil
+        var stopError: Error?
+        do {
+            try await screenCaptureService.stopCapture()
+        } catch {
+            stopError = error
+            recordStreamStopFailure(error)
+        }
+        clearCaptureCallbacks()
 
         do {
-            let finalized = try finalizeSession()
+            let finalized = try finalizeSession(stopError: stopError)
             DispatchQueue.main.async {
+                self.lastWarningMessage = finalized.warningMessage
                 self.state = .completed(outputDirectory: finalized.sessionDirectory)
             }
         } catch {
+            clearActiveSession()
             handleFailure(error)
         }
     }
@@ -158,13 +178,6 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
 
     public func hasFFmpeg() -> Bool {
         ffmpegTranscoder.locateFFmpeg() != nil
-    }
-
-    private var isCapturingState: Bool {
-        if case .capturing = state {
-            return true
-        }
-        return false
     }
 
     private func ensurePermission() async throws {
@@ -189,6 +202,7 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
         try FileManager.default.createDirectory(at: imageDirectory, withIntermediateDirectories: true)
 
         ioQueue.sync {
+            self.finalizationGate.reset()
             self.activeSession = ActiveSession(
                 settings: settings,
                 sessionID: sessionID,
@@ -199,7 +213,9 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
                 startedAt: startedAt,
                 frames: [],
                 frameIndex: 0,
-                captureDiagnosticsAccumulator: CaptureDiagnosticsAccumulator()
+                captureDiagnosticsAccumulator: CaptureDiagnosticsAccumulator(),
+                firstAudioWriteError: nil,
+                firstStreamError: nil
             )
         }
 
@@ -233,14 +249,25 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
                     session.captureDiagnosticsAccumulator.recordAudioWriteSuccess()
                 } catch {
                     session.captureDiagnosticsAccumulator.recordAudioWriteFailure(error)
+                    if session.firstAudioWriteError == nil {
+                        session.firstAudioWriteError = error
+                    }
                     let record = CaptureErrorRecord(error: error)
                     CaptureLog.audio.error(
                         "audio append failed domain=\(record.domain, privacy: .public) code=\(record.code, privacy: .public)"
                     )
-                    self.handleFailure(error)
                 }
                 self.activeSession = session
             }
+        }
+
+        screenCaptureService.onStreamError = { [weak self] error in
+            guard let self else { return }
+            let record = CaptureErrorRecord(error: error)
+            CaptureLog.stream.error(
+                "stream callback failed domain=\(record.domain, privacy: .public) code=\(record.code, privacy: .public)"
+            )
+            self.recordStreamStopFailure(error)
         }
 
         try await screenCaptureService.startCapture(target: settings.target)
@@ -310,7 +337,7 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
         }
     }
 
-    private func finalizeSession() throws -> ActiveSession {
+    private func finalizeSession(stopError: Error?) throws -> FinalizedSession {
         let (session, audioDiagnostics, captureDiagnostics) = try ioQueue.sync {
             () throws -> (ActiveSession, AudioDiagnostics, CaptureDiagnostics) in
             guard let activeSession else {
@@ -324,12 +351,55 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
             )
         }
 
+        if let captureError = CaptureFinalizationFailureResolver.preferredError(
+            audioWriteError: session.firstAudioWriteError,
+            streamStopError: stopError ?? session.firstStreamError
+        ) {
+            writeFailureManifestBestEffort(
+                session: session,
+                audioDiagnostics: audioDiagnostics,
+                captureDiagnostics: captureDiagnostics
+            )
+            throw captureError
+        }
+
+        let finalizationPlan = CaptureCompletionResolver.makeFinalizationPlan(
+            captureDiagnostics: captureDiagnostics,
+            audioDiagnostics: audioDiagnostics,
+            audioFileName: session.finalAudioURL.lastPathComponent
+        )
+        let completionStatus = finalizationPlan.completionStatus
+
+        if !finalizationPlan.shouldTranscodeAudio {
+            let manifest = makeManifest(
+                session: session,
+                audioFileName: finalizationPlan.audioFileName,
+                audioDiagnostics: audioDiagnostics,
+                captureDiagnostics: captureDiagnostics,
+                completionStatus: completionStatus
+            )
+            try writeFinalManifest(manifest, to: session.sessionDirectory)
+            logFinalization(status: completionStatus, diagnostics: captureDiagnostics)
+            clearActiveSession()
+            return FinalizedSession(
+                sessionDirectory: session.sessionDirectory,
+                warningMessage: "音声サンプルを取得できなかったため、MP3なしで画像と診断情報を保存しました。"
+            )
+        }
+
         do {
             try AudioInputPreflight.validate(tempAudioURL: session.tempAudioURL)
-        } catch AudioInputPreflightError.fileMissing {
-            throw CaptureSessionControllerError.noAudioCaptured
-        } catch AudioInputPreflightError.fileEmpty {
-            throw CaptureSessionControllerError.emptyAudioFile
+        } catch {
+            let record = CaptureErrorRecord(error: error)
+            CaptureLog.audio.error(
+                "audio input validation failed domain=\(record.domain, privacy: .public) code=\(record.code, privacy: .public)"
+            )
+            writeFailureManifestBestEffort(
+                session: session,
+                audioDiagnostics: audioDiagnostics,
+                captureDiagnostics: captureDiagnostics
+            )
+            throw error
         }
 
         do {
@@ -339,45 +409,145 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
                 bitrateKbps: session.settings.audioBitrateKbps
             )
         } catch {
+            let record = CaptureErrorRecord(error: error)
+            CaptureLog.audio.error(
+                "audio conversion failed domain=\(record.domain, privacy: .public) code=\(record.code, privacy: .public)"
+            )
+            writeFailureManifestBestEffort(
+                session: session,
+                audioDiagnostics: audioDiagnostics,
+                captureDiagnostics: captureDiagnostics
+            )
             throw error
         }
 
-        let endedAt = Date()
-        let manifest = CaptureManifest(
+        let manifest = makeManifest(
+            session: session,
+            audioFileName: finalizationPlan.audioFileName,
+            audioDiagnostics: audioDiagnostics,
+            captureDiagnostics: captureDiagnostics,
+            completionStatus: completionStatus
+        )
+
+        try writeFinalManifest(manifest, to: session.sessionDirectory)
+        logFinalization(status: completionStatus, diagnostics: captureDiagnostics)
+        clearActiveSession()
+
+        var warningMessage: String?
+        if completionStatus == .completedWithWarnings {
+            let peak = String(format: "%.1f", audioDiagnostics.peakLevelDBFS)
+            let rms = String(format: "%.1f", audioDiagnostics.rmsLevelDBFS)
+            warningMessage = "音声サンプルは取得できましたが無音を検出しました" +
+                "（peak \(peak)dBFS / rms \(rms)dBFS）。MP3と診断情報を保存しました。"
+        }
+
+        return FinalizedSession(
+            sessionDirectory: session.sessionDirectory,
+            warningMessage: warningMessage
+        )
+    }
+
+    private func makeManifest(
+        session: ActiveSession,
+        audioFileName: String?,
+        audioDiagnostics: AudioDiagnostics,
+        captureDiagnostics: CaptureDiagnostics,
+        completionStatus: CaptureCompletionStatus?
+    ) -> CaptureManifest {
+        CaptureManifest(
             sessionID: session.sessionID,
             captureTarget: session.settings.target,
             intervalSeconds: session.settings.intervalSeconds,
             startedAt: session.startedAt,
-            endedAt: endedAt,
-            audioFileName: session.finalAudioURL.lastPathComponent,
+            endedAt: Date(),
+            audioFileName: audioFileName,
             audioDiagnostics: audioDiagnostics,
             imageDirectoryName: session.imageDirectory.lastPathComponent,
             frames: session.frames,
-            completionStatus: audioDiagnostics.isSilent ? .completedWithWarnings : .completed,
+            completionStatus: completionStatus,
             captureDiagnostics: captureDiagnostics
         )
+    }
 
-        _ = try manifest.write(to: session.sessionDirectory)
-        let completionStatus = manifest.completionStatus?.rawValue ?? "unknown"
-        CaptureLog.session.notice(
-            "session finalized status=\(completionStatus, privacy: .public) videoSamples=\(captureDiagnostics.videoSampleBufferCount, privacy: .public) audioSamples=\(captureDiagnostics.audioSampleBufferCount, privacy: .public) audioWrites=\(captureDiagnostics.audioWriteSuccessCount, privacy: .public) audioWriteFailures=\(captureDiagnostics.audioWriteFailureCount, privacy: .public)"
+    private func writeFinalManifest(_ manifest: CaptureManifest, to directory: URL) throws {
+        do {
+            _ = try manifest.write(to: directory)
+        } catch {
+            let record = CaptureErrorRecord(error: error)
+            CaptureLog.session.error(
+                "manifest write failed domain=\(record.domain, privacy: .public) code=\(record.code, privacy: .public)"
+            )
+            throw error
+        }
+    }
+
+    private func writeFailureManifestBestEffort(
+        session: ActiveSession,
+        audioDiagnostics: AudioDiagnostics,
+        captureDiagnostics: CaptureDiagnostics
+    ) {
+        let manifest = makeManifest(
+            session: session,
+            audioFileName: nil,
+            audioDiagnostics: audioDiagnostics,
+            captureDiagnostics: captureDiagnostics,
+            completionStatus: nil
         )
+        do {
+            _ = try manifest.write(to: session.sessionDirectory)
+        } catch {
+            let record = CaptureErrorRecord(error: error)
+            CaptureLog.session.error(
+                "failure manifest write failed domain=\(record.domain, privacy: .public) code=\(record.code, privacy: .public)"
+            )
+        }
+    }
 
+    private func logFinalization(
+        status: CaptureCompletionStatus,
+        diagnostics: CaptureDiagnostics
+    ) {
+        CaptureLog.session.notice(
+            "session finalized status=\(status.rawValue, privacy: .public) videoSamples=\(diagnostics.videoSampleBufferCount, privacy: .public) audioSamples=\(diagnostics.audioSampleBufferCount, privacy: .public) audioWrites=\(diagnostics.audioWriteSuccessCount, privacy: .public) audioWriteFailures=\(diagnostics.audioWriteFailureCount, privacy: .public)"
+        )
+    }
+
+    private func recordStreamStopFailure(_ error: Error) {
         ioQueue.sync {
-            self.activeSession = nil
-            self.latestVideoSampleBuffer = nil
+            guard var session = activeSession else {
+                return
+            }
+            session.captureDiagnosticsAccumulator.recordStreamStopFailure(error)
+            if session.firstStreamError == nil {
+                session.firstStreamError = error
+            }
+            activeSession = session
         }
+    }
 
-        if audioDiagnostics.isSilent {
-            throw CaptureSessionControllerError.silentAudioDetected(audioDiagnostics)
+    private func clearCaptureCallbacks() {
+        screenCaptureService.onVideoSampleBuffer = nil
+        screenCaptureService.onAudioSampleBuffer = nil
+        screenCaptureService.onStreamError = nil
+    }
+
+    private func clearActiveSession() {
+        ioQueue.sync {
+            activeSession = nil
         }
-
-        return session
+        sampleQueue.sync {
+            latestVideoSampleBuffer = nil
+        }
     }
 
     private func handleFailure(_ error: Error) {
+        let record = CaptureErrorRecord(error: error)
+        CaptureLog.session.error(
+            "session failed domain=\(record.domain, privacy: .public) code=\(record.code, privacy: .public)"
+        )
         DispatchQueue.main.async {
             self.lastErrorMessage = error.localizedDescription
+            self.lastWarningMessage = nil
             self.state = .failed(error)
         }
     }
@@ -406,6 +576,13 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
         var frames: [CaptureManifest.FrameRecord]
         var frameIndex: Int
         var captureDiagnosticsAccumulator: CaptureDiagnosticsAccumulator
+        var firstAudioWriteError: Error?
+        var firstStreamError: Error?
+    }
+
+    private struct FinalizedSession {
+        let sessionDirectory: URL
+        let warningMessage: String?
     }
 
     private static let sessionDateFormatter: DateFormatter = {

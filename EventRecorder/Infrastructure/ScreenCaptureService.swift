@@ -6,10 +6,11 @@ import ScreenCaptureKit
 public protocol ScreenCaptureServiceProtocol: AnyObject {
     var onVideoSampleBuffer: ((CMSampleBuffer) -> Void)? { get set }
     var onAudioSampleBuffer: ((CMSampleBuffer) -> Void)? { get set }
+    var onStreamError: ((Error) -> Void)? { get set }
 
     func availableCaptureTargets(includeOffscreen: Bool) async throws -> [CaptureTarget]
     func startCapture(target: CaptureTarget) async throws
-    func stopCapture() async
+    func stopCapture() async throws
 }
 
 public enum ScreenCaptureServiceError: LocalizedError {
@@ -35,11 +36,13 @@ public enum ScreenCaptureServiceError: LocalizedError {
 public final class ScreenCaptureService: NSObject, ScreenCaptureServiceProtocol {
     public var onVideoSampleBuffer: ((CMSampleBuffer) -> Void)?
     public var onAudioSampleBuffer: ((CMSampleBuffer) -> Void)?
+    public var onStreamError: ((Error) -> Void)?
 
     private let videoQueue = DispatchQueue(label: "event-recorder.video.sample")
     private let audioQueue = DispatchQueue(label: "event-recorder.audio.sample")
 
     private var stream: SCStream?
+    private static let userStoppedErrorCode = -3817
 
     public override init() {
         super.init()
@@ -83,7 +86,7 @@ public final class ScreenCaptureService: NSObject, ScreenCaptureServiceProtocol 
 
     public func startCapture(target: CaptureTarget) async throws {
         if stream != nil {
-            await stopCapture()
+            try await stopCapture()
         }
 
         CaptureLog.stream.notice("capture start requested")
@@ -132,21 +135,45 @@ public final class ScreenCaptureService: NSObject, ScreenCaptureServiceProtocol 
         CaptureLog.stream.notice("capture started")
     }
 
-    public func stopCapture() async {
+    public func stopCapture() async throws {
         guard let stream else {
             return
         }
         CaptureLog.stream.notice("capture stop requested")
+
+        var firstError: Error?
         do {
             try await stream.stopCapture()
-            CaptureLog.stream.notice("capture stopped")
         } catch {
+            firstError = error
             let record = CaptureErrorRecord(error: error)
             CaptureLog.stream.error(
                 "capture stop failed domain=\(record.domain, privacy: .public) code=\(record.code, privacy: .public)"
             )
         }
+
+        for outputType in [SCStreamOutputType.screen, .audio] {
+            do {
+                try stream.removeStreamOutput(self, type: outputType)
+            } catch {
+                if firstError == nil {
+                    firstError = error
+                }
+                let record = CaptureErrorRecord(error: error)
+                CaptureLog.stream.error(
+                    "stream output removal failed domain=\(record.domain, privacy: .public) code=\(record.code, privacy: .public)"
+                )
+            }
+        }
+
+        videoQueue.sync {}
+        audioQueue.sync {}
         self.stream = nil
+
+        if let firstError {
+            throw firstError
+        }
+        CaptureLog.stream.notice("capture stopped and sample queues drained")
     }
 
     private func loadShareableContent(onScreenWindowsOnly: Bool) async throws -> SCShareableContent {
@@ -203,9 +230,15 @@ extension ScreenCaptureService: SCStreamOutput {
 
 extension ScreenCaptureService: SCStreamDelegate {
     public func stream(_ stream: SCStream, didStopWithError error: Error) {
+        let nsError = error as NSError
         let record = CaptureErrorRecord(error: error)
+        if nsError.domain == SCStreamErrorDomain, record.code == Self.userStoppedErrorCode {
+            CaptureLog.stream.notice("stream stopped by user")
+            return
+        }
         CaptureLog.stream.error(
             "stream stopped unexpectedly domain=\(record.domain, privacy: .public) code=\(record.code, privacy: .public)"
         )
+        onStreamError?(error)
     }
 }

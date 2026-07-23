@@ -25,8 +25,15 @@ public struct CaptureErrorRecord: Codable, Equatable {
             return "UnknownErrorDomain"
         }
 
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-"))
-        guard domain.unicodeScalars.allSatisfy(allowed.contains) else {
+        let isAllowedASCII = domain.utf8.allSatisfy { byte in
+            switch byte {
+            case 45, 46, 48...57, 65...90, 95, 97...122:
+                return true
+            default:
+                return false
+            }
+        }
+        guard isAllowedASCII else {
             return "UnknownErrorDomain"
         }
         return domain

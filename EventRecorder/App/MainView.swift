@@ -115,7 +115,7 @@ struct MainView: View {
                             await controller.stop()
                         }
                     }
-                    .disabled(!controller.state.isRunning)
+                    .disabled(!controller.state.canStop)
                     .accessibilityIdentifier("capture.stopButton")
                 }
 
@@ -226,6 +226,11 @@ struct MainView: View {
                 if let lastErrorMessage = controller.lastErrorMessage {
                     Text(lastErrorMessage)
                         .foregroundStyle(.red)
+                }
+
+                if let lastWarningMessage = controller.lastWarningMessage {
+                    Text(lastWarningMessage)
+                        .foregroundStyle(.orange)
                 }
             }
             .padding(20)

@@ -17,6 +17,13 @@ public enum CaptureState {
         }
     }
 
+    public var canStop: Bool {
+        if case .capturing = self {
+            return true
+        }
+        return false
+    }
+
     public var statusText: String {
         switch self {
         case .idle:

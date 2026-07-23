@@ -112,3 +112,15 @@
 - `swift build`: 成功。
 - `./scripts/build_app.sh`: 成功。
 - `swift test`: Command Line Tools環境のため`XCTest not available`。追加テストは未実行であり、フルXcode環境のリリースゲートとして残る。
+
+### T3 停止排他・queue drain・部分保存
+
+- `CaptureState.canStop`とfinalization gateにより、停止開始を`.capturing`中の1回へ限定した。
+- `SCStream.stopCapture`後にscreen/audio outputを解除し、両方のserial sample queueをdrainしてからcallbackとwriterを閉じる。
+- audio sample 0件はtranscodeせず、`audioFileName: nil`、`completedWithoutAudio`のmanifestを保存する。
+- silent sampleはMP3を生成して`completedWithWarnings`、非無音は`completed`とする。
+- 最初のappend errorをstream/no-audio判断より優先し、実エラー時もCAF・画像を削除せずbest-effort manifestを残す。
+- user stop、append、stream、finalizeのログは固定メッセージとsanitized domain/code、整数カウンタだけを使用する。
+- `swift build`: 成功。
+- `./scripts/build_app.sh`: 成功。現行scriptが`/usr/bin/env bash`からx86_64 Homebrew bashを選ぶため生成物はx86_64となり、arm64化はT4の検証script修正で対応する。
+- `swift test`: `XCTest not available`のため未実行。

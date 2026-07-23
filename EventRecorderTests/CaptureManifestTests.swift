@@ -94,6 +94,10 @@ final class CaptureManifestTests: XCTestCase {
         XCTAssertEqual(record.code, 42)
         XCTAssertFalse(json.contains(secretDescription))
         XCTAssertFalse(json.contains("/Users/example"))
+        XCTAssertEqual(
+            CaptureErrorRecord(domain: "個人名ErrorDomain", code: 1).domain,
+            "UnknownErrorDomain"
+        )
     }
 
     private func makeManifest(

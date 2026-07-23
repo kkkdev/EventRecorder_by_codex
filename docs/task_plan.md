@@ -7,6 +7,8 @@
 - 影響範囲: capture domain、controller、ScreenCaptureKit adapter、UI、tests、README、診断script。
 - 最初の着手: manifest後方互換型と診断カウンタをSwiftPMでテスト可能にする。
 - 未解決事項: Blockerなし。OS内部のsample未配信理由はOpen-endedとしてログで追跡する。
+- 進捗: T1、T2、T3は完了。T4はローカルゲート完了、フルXcodeと実録画のリリースゲート未達。
+- リリース判定: `Yellow`。未達ゲートを理由に最終完了扱いにしない。
 
 ## 1. 目次
 
@@ -75,6 +77,7 @@ flowchart LR
 
 ### T1: 設計・調査・タスク計画
 
+- 状態: 完了（対応コミットは件名参照）
 - 目的: 実装判断、保存契約、品質ゲート、commit境界を固定する。
 - 対象:
   - `docs/design.md`
@@ -98,6 +101,7 @@ flowchart LR
 
 ### T2: 診断基盤とmanifest後方互換
 
+- 状態: 完了（対応コミットは件名参照）
 - 目的: callback未配信とappend失敗を次回から識別可能にする。
 - 対象:
   - `EventRecorder/Domain/CaptureManifest.swift`
@@ -123,6 +127,7 @@ flowchart LR
 
 ### T3: 停止排他・queue drain・部分保存
 
+- 状態: 完了（対応コミットは件名参照）
 - 目的: 停止時の取りこぼしと二重finalizeを防ぎ、音声0件を部分保存する。
 - 対象:
   - `CaptureSessionController`
@@ -156,6 +161,7 @@ flowchart LR
 
 ### T4: 運用資料・診断スクリプト・結合確認
 
+- 状態: ローカルゲート完了。フルXcode/XCTestと実録画回帰は未達。
 - 目的: 新しい保存状態を利用者が理解・診断でき、検証結果が再現可能であること。
 - 対象:
   - `README.md`
@@ -204,5 +210,5 @@ flowchart LR
 - `1/5 粒度`: docs、診断、挙動、運用の4コミットに分離。
 - `2/5 順序・依存`: schemaと診断をlifecycle修正より先に置く。
 - `3/5 テストと受け入れ条件`: 各タスクに対象テストと測定可能な条件を記載。
-- `4/5 docs・research`: 各タスクでresearch更新し、T1のmdts表示で固定5観点を確認済み。T4で最終previewを再確認する。
+- `4/5 docs・research`: 各タスクでresearchを更新し、T1とT4のmdts表示で固定5観点を確認した。
 - `5/5 差し戻しリスク・commit境界`: prod依存、CI、権限、macOS targetを変更しない境界を固定。

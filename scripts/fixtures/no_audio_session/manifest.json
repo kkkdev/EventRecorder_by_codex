@@ -1,0 +1,34 @@
+{
+  "audioDiagnostics": {
+    "nonSilentSampleCount": 0,
+    "peakAmplitude": 0,
+    "peakLevelDBFS": -160,
+    "rmsAmplitude": 0,
+    "rmsLevelDBFS": -160,
+    "sampleCount": 0,
+    "silenceThreshold": 0.00001
+  },
+  "captureDiagnostics": {
+    "audioSampleBufferCount": 0,
+    "audioWriteFailureCount": 0,
+    "audioWriteSuccessCount": 0,
+    "videoSampleBufferCount": 12
+  },
+  "captureTarget": {
+    "application": {
+      "applicationName": "Fixture",
+      "bundleIdentifier": "com.example.fixture",
+      "processID": 1
+    },
+    "displayID": 1,
+    "windowID": 1,
+    "windowTitle": ""
+  },
+  "completionStatus": "completedWithoutAudio",
+  "endedAt": "2026-07-23T06:00:10Z",
+  "frames": [],
+  "imageDirectoryName": "images",
+  "intervalSeconds": 1,
+  "sessionID": "fixture_no_audio",
+  "startedAt": "2026-07-23T06:00:00Z"
+}

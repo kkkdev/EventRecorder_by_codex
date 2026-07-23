@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -34,7 +34,10 @@ case "${ARCH}" in
     ;;
 esac
 
-mapfile -t SWIFT_SOURCES < <(find "${ROOT_DIR}/EventRecorder" -type f -name '*.swift' | sort)
+SWIFT_SOURCES=()
+while IFS= read -r source_file; do
+  SWIFT_SOURCES+=("${source_file}")
+done < <(find "${ROOT_DIR}/EventRecorder" -type f -name '*.swift' | sort)
 if [[ ${#SWIFT_SOURCES[@]} -eq 0 ]]; then
   echo "error: Swiftソースが見つかりません。" >&2
   exit 1

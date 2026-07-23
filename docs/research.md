@@ -124,3 +124,22 @@
 - `swift build`: 成功。
 - `./scripts/build_app.sh`: 成功。現行scriptが`/usr/bin/env bash`からx86_64 Homebrew bashを選ぶため生成物はx86_64となり、arm64化はT4の検証script修正で対応する。
 - `swift test`: `XCTest not available`のため未実行。
+
+### T4 運用資料・診断script・結合確認
+
+- `scripts/build_app.sh`をnative `/bin/bash`へ固定し、Bash 3互換のsource列挙へ変更した。
+- 変更後の直接buildはarm64、ad-hoc署名のidentifierは`io.github.eventrecorder.EventRecorder`、`codesign --verify --deep --strict`は成功した。
+- workspace appを別プロセスで起動し、3秒以上生存することを確認後、そのPIDだけをTERMで終了した。
+- `scripts/analyze_session_audio.sh`はoptional `audioFileName`、`completionStatus`、`captureDiagnostics`を表示し、音声ファイルがないセッションではffmpegを要求しない。
+- no-audio fixture: `completedWithoutAudio`、audio callback/write 0、音声ファイルなしを表示して成功した。
+- 既存正常セッション`Session-B`: 旧manifestを読めた。CAFは48kHz stereo、非無音sample、MP3は非空で診断成功した。
+- `/usr/bin/log show --last 10m --style compact --predicate 'subsystem == "io.github.eventrecorder.capture"'`: 成功。起動スモーク時のScreenCaptureKit errorをsanitized domain/codeで取得し、title、URL、保存先pathは含まれなかった。
+- `swift build`: 成功。
+- `swift test`: 未達。`XCTest not available`。
+- `xcodegen generate`: 成功。
+- `xcodebuild ... build`: 未達。active developer directoryがCommand Line Toolsで、フルXcodeが存在しない。
+- `./scripts/build_app.sh`: 成功。
+- `file ./build/EventRecorder.app/Contents/MacOS/EventRecorder`: `Mach-O 64-bit executable arm64`。
+- `codesign --verify --deep --strict ./build/EventRecorder.app`: 成功。
+- 実録画回帰: 未達。起動スモーク時にScreenCaptureKitのpermission error code `-3801`を確認しており、TCC権限変更は自動実行していない。
+- リリース判定: Yellowのまま。フルXcodeの自動テストと実音声/TCCを使う回帰が完了するまで、計画上の完了扱いにしない。

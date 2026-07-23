@@ -49,11 +49,22 @@ BUNDLE_IDENTIFIER=com.example.eventrecorder ./scripts/build_app.sh
 6. 終了時に `停止` を押す。
 
 出力先:
-- `保存先/session_YYYYMMDD_HHMMSS/recording.mp3`
+- `保存先/session_YYYYMMDD_HHMMSS/recording.mp3`（音声sampleがある場合）
+- `保存先/session_YYYYMMDD_HHMMSS/recording_tmp.caf`（一時音声。変換失敗時も保持）
 - `保存先/session_YYYYMMDD_HHMMSS/images/*.jpg`
 - `保存先/session_YYYYMMDD_HHMMSS/manifest.json`
 
-`manifest.json` には `audioDiagnostics`（`peakLevelDBFS` / `rmsLevelDBFS` / `nonSilentSampleCount`）が含まれます。
+`manifest.json`には次の完了状態と診断が含まれます。
+
+| `completionStatus` | 音声sample | MP3 | 状態 |
+| --- | ---: | --- | --- |
+| `completed` | 1件以上・非無音 | あり | 完了 |
+| `completedWithWarnings` | 1件以上・無音 | あり | 警告付き完了 |
+| `completedWithoutAudio` | 0件 | なし | 警告付き部分保存 |
+
+- `audioDiagnostics`: `peakLevelDBFS` / `rmsLevelDBFS` / `nonSilentSampleCount`
+- `captureDiagnostics`: video/audio callback数、audio write成功・失敗数、最初・最後のaudio PTS、sanitized error domain/code
+
 また、現在は無音回避のため「選択ウィンドウが属するディスプレイ単位」で収録します。
 
 ## 5. イベント手順（汎用URL）
@@ -67,24 +78,28 @@ BUNDLE_IDENTIFIER=com.example.eventrecorder ./scripts/build_app.sh
 
 ## 6. 既知の制限
 - 録画は手動開始/停止のみ（自動録画なし）。
-- 対象アプリ音声条件を満たせない場合は開始失敗します。
+- 音声sampleが届かない場合でも画像とmanifestは保存しますが、根本原因の特定には診断情報とUnified Loggingが必要です。
 - DRM保護コンテンツ等は録音できない場合があります。
 
-## 6.1 音声ファイル未生成/空で失敗した場合
-停止時に `対象アプリの音声が取得できなかったため、MP3変換を中止しました。` と表示される場合は、録画中に対象アプリで音声が再生されていません。
+## 6.1 音声sampleが0件だった場合
+停止時に `音声サンプルを取得できなかったため、MP3なしで画像と診断情報を保存しました。` と表示された場合、セッションは`completedWithoutAudio`です。MP3は生成されませんが、画像とmanifestは保存済みです。
+
+この状態だけから「対象アプリで音声が再生されていなかった」とは断定できません。
 
 確認手順:
-1. キャプチャ対象が正しいアプリ/ウィンドウかを確認する。
-2. 対象アプリで実際に音声が再生されている状態で再実行する。
-3. 必要に応じて Screen Recording 権限を再付与する。
+1. `manifest.json`の`captureDiagnostics.audioSampleBufferCount`が`0`であることを確認する。
+2. 同時刻のUnified Loggingでstream開始・停止エラーを確認する。
+3. キャプチャ対象と音声再生状態を確認する。
+4. 必要に応じてシステム設定からScreen Recording権限を再許可する。
 
-## 6.2 音声ファイルは生成されたが無音だった場合
-停止時に `音声ファイルは生成されましたが無音を検出しました...` と表示される場合は、収録自体は完了していますが、音量レベルが閾値以下です。
+## 6.2 音声sampleはあるが無音だった場合
+停止時に `音声サンプルは取得できましたが無音を検出しました...` と表示された場合、MP3とmanifestは保存済みで、状態は`completedWithWarnings`です。
 
 確認手順:
-1. `manifest.json` の `audioDiagnostics.peakLevelDBFS` と `audioDiagnostics.nonSilentSampleCount` を確認する。
-2. `システム設定 > プライバシーとセキュリティ > 画面収録（または Screen & System Audio Recording）` で EventRecorder を再許可する。
-3. Chrome/Meet 再起動後に再実行し、必要なら `./scripts/analyze_session_audio.sh <session_dir>` で波形レベルを確認する。
+1. `manifest.json`の`captureDiagnostics.audioSampleBufferCount`が1件以上であることを確認する。
+2. `audioDiagnostics.peakLevelDBFS`と`audioDiagnostics.nonSilentSampleCount`を確認する。
+3. `システム設定 > プライバシーとセキュリティ > 画面収録（または Screen & System Audio Recording）`でEventRecorderを再許可する。
+4. Chrome/Meet再起動後に再実行し、必要なら`./scripts/analyze_session_audio.sh <session_dir>`で波形レベルを確認する。
 
 ## 6.3 全画面化後に開始失敗する場合
 `全画面化などで対象ウィンドウが変化したため開始できません。` と表示される場合は、対象ウィンドウIDが古くなっています。
@@ -109,17 +124,32 @@ swift test
 xcodegen generate
 xcodebuild -project ./EventRecorder.xcodeproj -scheme EventRecorder -destination 'platform=macOS' build
 ./scripts/build_app.sh
+file ./build/EventRecorder.app/Contents/MacOS/EventRecorder
+codesign --verify --deep --strict ./build/EventRecorder.app
 ```
 
 この環境では `swift test` が `XCTest not available` で失敗する場合があります。
 また、`xcodebuild` はフルXcodeが選択されている環境で実行してください。
 
 ### 7.1 検証時 の確認結果
+
 - `swift build`: 成功
-- `swift test`: 失敗（Command Line Tools環境で `XCTest not available`）
+- `swift test`: 未達（Command Line Tools環境で`XCTest not available`）
 - `xcodegen generate`: 成功
-- `xcodebuild -project ./EventRecorder.xcodeproj -scheme EventRecorder -destination 'platform=macOS' build`: 未完了（フルXcodeではなくCommand Line Toolsが選択されていたため）
+- `xcodebuild -project ./EventRecorder.xcodeproj -scheme EventRecorder -destination 'platform=macOS' build`: 未達（フルXcode未導入）
 - `./scripts/build_app.sh`: 成功
+- `file ./build/EventRecorder.app/Contents/MacOS/EventRecorder`: `Mach-O 64-bit executable arm64`
+- `codesign --verify --deep --strict ./build/EventRecorder.app`: 成功
+- workspace appの起動スモーク: 成功
+- no-audio fixtureと既存の正常音声セッションに対する診断script: 成功
+- Unified Logging predicate: 成功。固定subsystemのエラーをdomain/codeで取得できた
+
+未達:
+
+- フルXcode環境でのXCTestとxcodebuild
+- TCC権限と既知の再生音声を使う10回連続録画、無音3回、停止直前sampleの実機回帰
+
+上記を未達のリリースゲートとして扱い、最終完了とは判定しません。詳細は`docs/research.md`のT4を参照してください。
 
 ## 8. UI自動テスト（ローカル）
 UIテストターゲットを含むプロジェクトを生成して実行します。
@@ -144,6 +174,26 @@ xcodebuild -project ./EventRecorder.xcodeproj -scheme EventRecorder -destination
 出力される主な指標:
 - `mean_volume` / `max_volume`（`volumedetect`）
 - `sample_count` / `nonSilentSampleCount`（`manifest.json` の `audioDiagnostics`）
+- `completionStatus`
+- `videoSampleBufferCount` / `audioSampleBufferCount`
+- `audioWriteSuccessCount` / `audioWriteFailureCount`
+- `firstAudioSamplePTSSeconds` / `lastAudioSamplePTSSeconds`
+- sanitized `audioWriteError` / `streamStopError`
+
+音声ファイルがない`completedWithoutAudio`セッションでも、manifestの診断は表示できます。no-audio fixtureでの確認例:
+
+```bash
+./scripts/analyze_session_audio.sh ./scripts/fixtures/no_audio_session
+```
+
+Unified Logging:
+
+```bash
+log show --last 10m --style compact \
+  --predicate 'subsystem == "io.github.eventrecorder.capture"'
+```
+
+ログにはウィンドウタイトル、URL、保存先絶対パスを出さず、固定イベント名、整数カウンタ、sanitized error domain/codeだけを記録します。
 
 ## 10. 利用上の注意
 - 録画・録音の実行前に、関係者の同意、法令、サービス利用規約、所属組織のルールを利用者自身で確認してください。

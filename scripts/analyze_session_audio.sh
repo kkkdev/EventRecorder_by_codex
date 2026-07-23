@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
 
 if [[ $# -ne 1 ]]; then
@@ -16,16 +16,6 @@ if [[ ! -d "${session_dir}" ]]; then
   exit 1
 fi
 
-if ! command -v ffprobe >/dev/null 2>&1; then
-  echo "ffprobe is required. Install ffmpeg first: brew install ffmpeg" >&2
-  exit 1
-fi
-
-if ! command -v ffmpeg >/dev/null 2>&1; then
-  echo "ffmpeg is required. Install ffmpeg first: brew install ffmpeg" >&2
-  exit 1
-fi
-
 echo "== Session =="
 echo "${session_dir}"
 echo
@@ -37,10 +27,47 @@ echo
 if [[ -f "${manifest}" ]]; then
   echo "== manifest.json (audio fields) =="
   if command -v jq >/dev/null 2>&1; then
-    jq '{audioFileName, audioDiagnostics, captureTarget, startedAt, endedAt}' "${manifest}"
+    jq '{
+      completionStatus,
+      audioFileName,
+      audioDiagnostics,
+      captureDiagnostics,
+      startedAt,
+      endedAt
+    }' "${manifest}"
+    manifest_audio_file="$(jq -r '.audioFileName // empty' "${manifest}")"
+    if [[ -n "${manifest_audio_file}" ]]; then
+      case "${manifest_audio_file}" in
+        */*)
+          echo "Invalid audioFileName in manifest: path separators are not allowed" >&2
+          exit 1
+          ;;
+        *)
+          final_audio="${session_dir}/${manifest_audio_file}"
+          ;;
+      esac
+    fi
   else
-    grep -E '"audioFileName"|"audioDiagnostics"|"captureTarget"|"startedAt"|"endedAt"' "${manifest}" || true
+    grep -E \
+      '"completionStatus"|"audioFileName"|"audioDiagnostics"|"captureDiagnostics"|"startedAt"|"endedAt"' \
+      "${manifest}" || true
   fi
+  echo
+fi
+
+if [[ -f "${tmp_audio}" || -f "${final_audio}" ]]; then
+  if ! command -v ffprobe >/dev/null 2>&1; then
+    echo "ffprobe is required. Install ffmpeg first: brew install ffmpeg" >&2
+    exit 1
+  fi
+
+  if ! command -v ffmpeg >/dev/null 2>&1; then
+    echo "ffmpeg is required. Install ffmpeg first: brew install ffmpeg" >&2
+    exit 1
+  fi
+else
+  echo "== Audio files =="
+  echo "音声ファイルはありません。completionStatus と captureDiagnostics を確認してください。"
   echo
 fi
 

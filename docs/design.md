@@ -283,18 +283,18 @@ open ./build/EventRecorder.app
 
 ## 15. Definition of Done
 
-- [ ] 音声0件でMP3を生成せず、画像とmanifestを保存する。
-- [ ] 音声0件が`.failed`ではなく警告付き完了になる。
-- [ ] silent sampleと音声0件をmanifestで区別できる。
-- [ ] sample queueをdrainしてからwriterを閉じる。
-- [ ] 停止連打でfinalizeが重複しない。
-- [ ] appendエラーを汎用no-audioエラーで上書きしない。
-- [ ] Unified Loggingとmanifest countersでcallback未配信と書込失敗を区別できる。
-- [ ] 旧manifestのdecode互換をテストする。
-- [ ] `swift build`とarm64 app buildが成功する。
-- [ ] フルXcode環境で自動テストが成功する、または未達を明記して完了扱いにしない。
-- [ ] README、実行手順、診断スクリプトが新仕様と一致する。
-- [ ] Markdown previewの固定5観点を確認する。
+- [x] 音声0件でMP3を生成せず、画像とmanifestを保存する。
+- [x] 音声0件が`.failed`ではなく警告付き完了になる。
+- [x] silent sampleと音声0件をmanifestで区別できる。
+- [x] sample queueをdrainしてからwriterを閉じる。
+- [x] 停止連打でfinalizeが重複しない。
+- [x] appendエラーを汎用no-audioエラーで上書きしない。
+- [x] Unified Loggingとmanifest countersでcallback未配信と書込失敗を区別できる。
+- [x] 旧manifestのdecode互換テストを追加した。実行はフルXcode環境のリリースゲートとして残る。
+- [x] `swift build`とarm64 app buildが成功する。
+- [x] フルXcode環境の自動テスト未達を明記し、完了扱いにしない。
+- [x] README、実行手順、診断スクリプトが新仕様と一致する。
+- [x] Markdown previewの固定5観点を確認する。
 
 ## 16. 設計レビュー
 

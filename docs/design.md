@@ -151,7 +151,7 @@ flowchart TD
 
 責務:
 
-- `ScreenCaptureService`: stream開始・停止、output解除、内部sample queueのdrain、stream error logging。
+- `ScreenCaptureService`: stream開始・停止、output解除、内部sample queueのdrain、stream error logging。画像バッファなしのidle/blank screen sampleを捨て、最後の描画可能frameを維持する。
 - `CaptureSessionController`: lifecycle排他、callback counters、writer error保持、finalizeとUI状態。
 - `CaptureManifest`: 保存結果と診断情報の後方互換な永続化。
 - `AudioFileWriter`: PCM書込と音量診断。sampleがない場合に偽の音声を生成しない。
@@ -181,6 +181,7 @@ flowchart TD
 - `code: Int`
 
 localizedDescription、ウィンドウ名、URL、保存先は保存しない。
+`videoSampleBufferCount`はScreenCaptureKitの全callback数ではなく、画像バッファを持ちcontrollerへ渡した描画可能sample数である。
 
 ### `CaptureManifest`
 
@@ -218,6 +219,7 @@ log show --last 10m --style compact \
 - sampleあり非無音は`completed`になる。
 - append errorがno-audioエラーで上書きされない。
 - 停止を複数回要求してもfinalizeが1回。
+- 画像バッファなしのscreen sampleを最新JPEG候補として保持しない。
 
 ### ビルド・スモーク
 
@@ -239,7 +241,8 @@ open ./build/EventRecorder.app
 ### 実機回帰
 
 - 既知の音声再生中に10回開始・停止し、10回とも非空MP3。
-- 無音で3回開始・停止し、3回とも`completedWithoutAudio`。
+- 音を再生しない状態で3回開始・停止し、sample 0件なら`completedWithoutAudio`、全ゼロsampleが届けば`completedWithWarnings`。
+- audio sample 0件分岐はfixtureでもMP3なし、manifestありを確認する。
 - silent PCMを注入したテストで`completedWithWarnings`。
 - 停止連打で重複変換や`sessionNotPrepared`が発生しない。
 - 停止直前sampleがdrain後のカウンタとCAFへ反映される。

@@ -47,7 +47,7 @@ BUNDLE_IDENTIFIER=com.example.eventrecorder ./scripts/build_app.sh
     - `completedWithWarnings`: sampleはあるが無音・MP3保存完了
     - `completedWithoutAudio`: sampleが0件・MP3なしの部分保存
   - `audioDiagnostics`（`peakLevelDBFS` / `rmsLevelDBFS` / `nonSilentSampleCount`）
-  - `captureDiagnostics`（video/audio callback数、audio write成否、audio PTS、sanitized error）
+  - `captureDiagnostics`（描画可能video sample数、audio callback数、audio write成否、audio PTS、sanitized error）
 
 補足:
 - 現在は Chrome Meet の無音回避のため、選択ウィンドウが属するディスプレイ単位で収録します。
@@ -62,6 +62,11 @@ BUNDLE_IDENTIFIER=com.example.eventrecorder ./scripts/build_app.sh
 ユニットテスト:
 ```bash
 swift test
+```
+
+Command Line Toolsだけでも実行できる停止/finalize検証:
+```bash
+./scripts/verify_capture_finalization.sh
 ```
 
 UIテスト（ローカル実行）:

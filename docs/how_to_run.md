@@ -121,6 +121,7 @@ BUNDLE_IDENTIFIER=com.example.eventrecorder ./scripts/build_app.sh
 ```bash
 swift build
 swift test
+./scripts/verify_capture_finalization.sh
 xcodegen generate
 xcodebuild -project ./EventRecorder.xcodeproj -scheme EventRecorder -destination 'platform=macOS' build
 ./scripts/build_app.sh
@@ -135,6 +136,7 @@ codesign --verify --deep --strict ./build/EventRecorder.app
 
 - `swift build`: 成功
 - `swift test`: 未達（Command Line Tools環境で`XCTest not available`）
+- `./scripts/verify_capture_finalization.sh`: 成功
 - `xcodegen generate`: 成功
 - `xcodebuild -project ./EventRecorder.xcodeproj -scheme EventRecorder -destination 'platform=macOS' build`: 未達（フルXcode未導入）
 - `./scripts/build_app.sh`: 成功
@@ -143,13 +145,16 @@ codesign --verify --deep --strict ./build/EventRecorder.app
 - workspace appの起動スモーク: 成功
 - no-audio fixtureと既存の正常音声セッションに対する診断script: 成功
 - Unified Logging predicate: 成功。固定subsystemのエラーをdomain/codeで取得できた
+- workspace arm64 appで既知音源を使う10回連続録画: 全10件`completed`、非空MP3/JPEG/manifest、audio write失敗0
+- 音を再生しない状態の3回録画: OSが全ゼロsampleを配信し、全3件`completedWithWarnings`、MP3/JPEG/manifest保存
+- 停止連打: stop/finalizeが各1回だけ実行され、`completed`
+- 対象PIDのUnified Logging監査: error、window title、URL、保存先絶対pathはいずれも0件
 
 未達:
 
 - フルXcode環境でのXCTestとxcodebuild
-- TCC権限と既知の再生音声を使う10回連続録画、無音3回、停止直前sampleの実機回帰
 
-上記を未達のリリースゲートとして扱い、最終完了とは判定しません。詳細は`docs/research.md`のT4を参照してください。
+上記を未達のリリースゲートとして扱い、最終完了とは判定しません。実録画の詳細は`docs/research.md`のT5を参照してください。
 
 ## 8. UI自動テスト（ローカル）
 UIテストターゲットを含むプロジェクトを生成して実行します。
@@ -175,7 +180,7 @@ xcodebuild -project ./EventRecorder.xcodeproj -scheme EventRecorder -destination
 - `mean_volume` / `max_volume`（`volumedetect`）
 - `sample_count` / `nonSilentSampleCount`（`manifest.json` の `audioDiagnostics`）
 - `completionStatus`
-- `videoSampleBufferCount` / `audioSampleBufferCount`
+- `videoSampleBufferCount`（描画可能sample）/ `audioSampleBufferCount`（audio callback）
 - `audioWriteSuccessCount` / `audioWriteFailureCount`
 - `firstAudioSamplePTSSeconds` / `lastAudioSamplePTSSeconds`
 - sanitized `audioWriteError` / `streamStopError`

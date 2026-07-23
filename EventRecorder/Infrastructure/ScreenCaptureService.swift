@@ -219,6 +219,13 @@ extension ScreenCaptureService: SCStreamOutput {
 
         switch type {
         case .screen:
+            // ScreenCaptureKit also delivers idle/blank samples without an image buffer.
+            // Keep the last renderable frame instead of replacing it with an unusable sample.
+            guard VideoSampleBufferPolicy.shouldRetain(
+                imageBuffer: CMSampleBufferGetImageBuffer(sampleBuffer)
+            ) else {
+                return
+            }
             onVideoSampleBuffer?(sampleBuffer)
         case .audio:
             onAudioSampleBuffer?(sampleBuffer)

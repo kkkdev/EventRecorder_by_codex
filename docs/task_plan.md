@@ -3,11 +3,11 @@
 ## 0. 30秒サマリー
 
 - 目的: 音声0件でも画像と診断manifestを部分保存し、停止競合と観測性不足を修正する。
-- 採用方針: 設計資料、診断基盤、停止/finalize修正、運用資料の4コミット。
+- 採用方針: 設計資料、診断基盤、停止/finalize修正、運用資料の4コミットに加え、実録画で判明した画像なしscreen sample対策を1コミット。
 - 影響範囲: capture domain、controller、ScreenCaptureKit adapter、UI、tests、README、診断script。
 - 最初の着手: manifest後方互換型と診断カウンタをSwiftPMでテスト可能にする。
 - 未解決事項: Blockerなし。OS内部のsample未配信理由はOpen-endedとしてログで追跡する。
-- 進捗: T1、T2、T3は完了。T4はローカルゲート完了、フルXcodeと実録画のリリースゲート未達。
+- 進捗: T1〜T5の実装と実録画回帰は完了。フルXcodeのXCTest/xcodebuildだけが未達。
 - リリース判定: `Yellow`。未達ゲートを理由に最終完了扱いにしない。
 
 ## 1. 目次
@@ -67,11 +67,13 @@ flowchart LR
     T1["T1 設計・計画"] --> T2["T2 診断基盤"]
     T2 --> T3["T3 停止・部分保存"]
     T3 --> T4["T4 Docs・結合確認"]
+    T4 --> T5["T5 実録画・idle frame対策"]
 ```
 
 - T2で後方互換manifestと診断型を先に用意する。
 - T3はT2の型とカウンタを使い、capture lifecycleを修正する。
 - T4は確定した実挙動と実行結果だけをドキュメントへ反映する。
+- T5は手動権限付与後の実録画で見つかった阻害要因だけを最小修正し、実録画を再実行する。
 
 ## 5. タスク一覧
 
@@ -161,7 +163,7 @@ flowchart LR
 
 ### T4: 運用資料・診断スクリプト・結合確認
 
-- 状態: ローカルゲート完了。フルXcode/XCTestと実録画回帰は未達。
+- 状態: 完了（対応コミットは件名参照）。当時未達だった実録画はT5で完了。
 - 目的: 新しい保存状態を利用者が理解・診断でき、検証結果が再現可能であること。
 - 対象:
   - `README.md`
@@ -190,12 +192,38 @@ flowchart LR
   - XCTest/xcodebuild未実施時は理由を明記し、完了扱いにしない。
 - コミット: `docs(audio): document partial recordings and verification`
 
+### T5: 実録画回帰・画像なしscreen sample対策
+
+- 状態: 完了（本コミット）。
+- 目的: 手動権限付与後に実録画を再試行し、停止時保存を実環境で検証する。
+- 対象:
+  - `ScreenCaptureService`
+  - video sample保持policy
+  - `EventRecorderTests`
+  - Command Line Tools用の決定的verifier
+  - `docs`
+- 実装内容:
+  - ScreenCaptureKitのidle/blank sampleに画像バッファがない場合、最新の描画可能frameを上書きしない。
+  - image bufferあり/なしのpolicyテストを追加。
+  - XCTestなしでもfinalize分岐、停止一回性、manifest互換、PII sanitization、video sample policyを検証できるscriptを追加。
+- 実録画:
+  - 既知音源あり10回: 全件`completed`、MP3/JPEG/manifestあり、audio write失敗0。
+  - 音源なし3回: OSが全ゼロsampleを配信し、全件`completedWithWarnings`、MP3/JPEG/manifestあり。
+  - 停止連打1回: stop/finalizeが各1回だけ増加。
+  - Unified Logging: 対象PIDのerror、window title、URL、絶対pathはいずれも0件。
+- 受け入れ条件:
+  - 10回連続録画が全件非空MP3で完了する。
+  - 静止画面でも画像なしsampleによるJPEG失敗が起きない。
+  - 停止連打で重複finalizeしない。
+  - `/Applications`とTCC設定を変更しない。
+- コミット: `fix(capture): ignore image-less screen samples`
+
 ## 6. リスクと対応
 
 - XCTest不可:
   - `swift build`、直接app build、スモークを実行し、フルXcodeをリリースゲートとして残す。
 - 実音声/TCC依存:
-  - domain testsとfakeで分岐を固定し、実録画未実施を明記する。
+  - 手動権限付与後のworkspace appで実録画し、sample 0件分岐はfixtureと決定的verifierで固定する。
 - stream停止時のcallback競合:
   - output解除後に内部serial queueをdrainし、controller callbackをその後に解除する。
 - manifest互換:
@@ -207,7 +235,7 @@ flowchart LR
 
 ## 7. タスク計画レビュー
 
-- `1/5 粒度`: docs、診断、挙動、運用の4コミットに分離。
+- `1/5 粒度`: docs、診断、挙動、運用、実録画で判明した回帰対策の5コミットに分離。
 - `2/5 順序・依存`: schemaと診断をlifecycle修正より先に置く。
 - `3/5 テストと受け入れ条件`: 各タスクに対象テストと測定可能な条件を記載。
 - `4/5 docs・research`: 各タスクでresearchを更新し、T1とT4のmdts表示で固定5観点を確認した。

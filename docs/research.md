@@ -141,5 +141,25 @@
 - `./scripts/build_app.sh`: 成功。
 - `file ./build/EventRecorder.app/Contents/MacOS/EventRecorder`: `Mach-O 64-bit executable arm64`。
 - `codesign --verify --deep --strict ./build/EventRecorder.app`: 成功。
-- 実録画回帰: 未達。起動スモーク時にScreenCaptureKitのpermission error code `-3801`を確認しており、TCC権限変更は自動実行していない。
-- リリース判定: Yellowのまま。フルXcodeの自動テストと実音声/TCCを使う回帰が完了するまで、計画上の完了扱いにしない。
+- 実録画回帰は当初、ScreenCaptureKitのpermission error code `-3801`で未達だった。TCC設定は自動変更せず、利用者による手動許可を待った。
+- リリース判定: Yellowのまま。フルXcodeの自動テストを最終ゲートとして残す。
+
+### T5 実録画回帰と画像なしscreen sample対策
+
+- 利用者が画面収録権限を手動付与した後、workspaceのarm64 appで`Screen Recording権限 許可済み`を確認した。
+- 最初の実録画では、ScreenCaptureKitが静止画面で返した画像バッファなしのscreen sampleを最新フレームとして保持したため、1秒後のJPEG保存が`JpegFrameWriterError.invalidImageBuffer`で失敗した。
+- Command Line Tools SDKの`SCStream.h`では、`SCFrameStatusIdle`はdisplayに変化がなく新しいframeを生成しなかった状態と定義されている。
+- image bufferを持つscreen sampleだけをcontrollerへ渡し、最後の描画可能frameを画像なしsampleで上書きしないようにした。
+- `VideoSampleBufferPolicyTests`と`verify_capture_finalization.sh`へ、image bufferなしを拒否し、ありを保持する回帰ケースを追加した。
+- 修正後、`/System/Library/Sounds/Glass.aiff`を既知音源として10回連続録画した。10件すべて:
+  - `completionStatus = completed`
+  - audio callback数とwrite成功数が一致
+  - audio write失敗0件
+  - 非空MP3とJPEG 3〜4枚を保存
+  - Unified Loggingのfinalize noticeあり、error 0件
+- 音を再生しない実録画3回では、macOSがaudio sampleを0件ではなく159〜162件の全ゼロsampleとして配信した。3件とも設計どおり`completedWithWarnings`となり、MP3、JPEG、manifestを保存した。
+- audio sample 0件は実機で強制せず、no-audio fixtureと決定的verifierで`completedWithoutAudio`、MP3なし、manifestありを確認した。
+- 停止ボタンを連続2回押した実録画では、`capture stop requested`と`session finalized`がそれぞれ1件だけ増えた。成果物は`completed`、audio write失敗0件だった。
+- 対象PIDのcapture logを監査し、ウィンドウタイトル、URL、保存先絶対path、errorはいずれも0件だった。
+- 実録画中に生成したsession成果物は`~/Movies/EventRecorder`へ保持し、`/Applications/EventRecorder.app`とTCC設定は変更していない。
+- リリース判定: Yellow。実録画ゲートは完了したが、フルXcode不在のためXCTestとxcodebuildは未達。

@@ -102,3 +102,13 @@
 - 上記14資料とローカル証跡を設計へ反映した。
 - Blockerはなく、FeasibilityはXCTest制約を理由にYellowとした。
 - ユーザー選択の「部分保存＋警告」を保存契約へ固定した。
+
+### T2 診断基盤とmanifest後方互換
+
+- `CaptureManifest.audioFileName`をoptional化し、旧JSONで欠ける新フィールドもdecodeできる設計にした。
+- callback数、audio write成功・失敗、最初・最後の有限PTS、最初のwrite/stop errorを保持する診断型を追加した。
+- errorはlocalized descriptionを保存せず、文字種と長さを制限したdomainとcodeだけへ変換する。
+- capture経路の`print`を固定subsystem/categoryのUnified Loggingへ置換した。
+- `swift build`: 成功。
+- `./scripts/build_app.sh`: 成功。
+- `swift test`: Command Line Tools環境のため`XCTest not available`。追加テストは未実行であり、フルXcode環境のリリースゲートとして残る。

@@ -198,7 +198,8 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
                 finalAudioURL: finalAudioURL,
                 startedAt: startedAt,
                 frames: [],
-                frameIndex: 0
+                frameIndex: 0,
+                captureDiagnosticsAccumulator: CaptureDiagnosticsAccumulator()
             )
         }
 
@@ -208,6 +209,11 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
 
         screenCaptureService.onVideoSampleBuffer = { [weak self] sampleBuffer in
             guard let self else { return }
+            self.ioQueue.sync {
+                guard var session = self.activeSession else { return }
+                session.captureDiagnosticsAccumulator.recordVideoSampleBuffer()
+                self.activeSession = session
+            }
             guard let copied = Self.copy(sampleBuffer: sampleBuffer) else { return }
             self.sampleQueue.sync {
                 self.latestVideoSampleBuffer = copied
@@ -217,15 +223,28 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
         screenCaptureService.onAudioSampleBuffer = { [weak self] sampleBuffer in
             guard let self else { return }
             self.ioQueue.sync {
+                guard var session = self.activeSession else { return }
+                let pts = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sampleBuffer))
+                session.captureDiagnosticsAccumulator.recordAudioSampleBuffer(
+                    presentationTimeSeconds: pts
+                )
                 do {
                     try self.audioFileWriter.append(sampleBuffer: sampleBuffer)
+                    session.captureDiagnosticsAccumulator.recordAudioWriteSuccess()
                 } catch {
+                    session.captureDiagnosticsAccumulator.recordAudioWriteFailure(error)
+                    let record = CaptureErrorRecord(error: error)
+                    CaptureLog.audio.error(
+                        "audio append failed domain=\(record.domain, privacy: .public) code=\(record.code, privacy: .public)"
+                    )
                     self.handleFailure(error)
                 }
+                self.activeSession = session
             }
         }
 
         try await screenCaptureService.startCapture(target: settings.target)
+        CaptureLog.session.notice("session capture started")
 
         try snapshotScheduler.start(intervalSeconds: settings.intervalSeconds) { [weak self] in
             self?.captureSnapshotTick()
@@ -292,12 +311,17 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
     }
 
     private func finalizeSession() throws -> ActiveSession {
-        let (session, audioDiagnostics) = try ioQueue.sync { () throws -> (ActiveSession, AudioDiagnostics) in
+        let (session, audioDiagnostics, captureDiagnostics) = try ioQueue.sync {
+            () throws -> (ActiveSession, AudioDiagnostics, CaptureDiagnostics) in
             guard let activeSession else {
                 throw CaptureSessionControllerError.sessionNotPrepared
             }
             audioFileWriter.stop()
-            return (activeSession, audioFileWriter.diagnosticsSnapshot())
+            return (
+                activeSession,
+                audioFileWriter.diagnosticsSnapshot(),
+                activeSession.captureDiagnosticsAccumulator.makeDiagnostics()
+            )
         }
 
         do {
@@ -328,10 +352,16 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
             audioFileName: session.finalAudioURL.lastPathComponent,
             audioDiagnostics: audioDiagnostics,
             imageDirectoryName: session.imageDirectory.lastPathComponent,
-            frames: session.frames
+            frames: session.frames,
+            completionStatus: audioDiagnostics.isSilent ? .completedWithWarnings : .completed,
+            captureDiagnostics: captureDiagnostics
         )
 
         _ = try manifest.write(to: session.sessionDirectory)
+        let completionStatus = manifest.completionStatus?.rawValue ?? "unknown"
+        CaptureLog.session.notice(
+            "session finalized status=\(completionStatus, privacy: .public) videoSamples=\(captureDiagnostics.videoSampleBufferCount, privacy: .public) audioSamples=\(captureDiagnostics.audioSampleBufferCount, privacy: .public) audioWrites=\(captureDiagnostics.audioWriteSuccessCount, privacy: .public) audioWriteFailures=\(captureDiagnostics.audioWriteFailureCount, privacy: .public)"
+        )
 
         ioQueue.sync {
             self.activeSession = nil
@@ -375,6 +405,7 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
         let startedAt: Date
         var frames: [CaptureManifest.FrameRecord]
         var frameIndex: Int
+        var captureDiagnosticsAccumulator: CaptureDiagnosticsAccumulator
     }
 
     private static let sessionDateFormatter: DateFormatter = {

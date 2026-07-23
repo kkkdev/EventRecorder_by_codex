@@ -20,6 +20,7 @@ let package = Package(
                 "EventRecorder.entitlements",
                 "Infrastructure/AudioFileWriter.swift",
                 "Infrastructure/BrowserWindowController.swift",
+                "Infrastructure/CaptureLogger.swift",
                 "Infrastructure/JpegFrameWriter.swift",
                 "Infrastructure/PermissionManager.swift",
                 "Infrastructure/ReminderService.swift",

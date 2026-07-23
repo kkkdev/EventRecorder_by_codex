@@ -86,6 +86,7 @@ public final class ScreenCaptureService: NSObject, ScreenCaptureServiceProtocol 
             await stopCapture()
         }
 
+        CaptureLog.stream.notice("capture start requested")
         let content = try await loadShareableContent(onScreenWindowsOnly: false)
 
         guard let selectedWindow = content.windows.first(where: { $0.windowID == target.windowID }) else {
@@ -128,16 +129,22 @@ public final class ScreenCaptureService: NSObject, ScreenCaptureServiceProtocol 
         try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: audioQueue)
 
         try await stream.startCapture()
+        CaptureLog.stream.notice("capture started")
     }
 
     public func stopCapture() async {
         guard let stream else {
             return
         }
+        CaptureLog.stream.notice("capture stop requested")
         do {
             try await stream.stopCapture()
+            CaptureLog.stream.notice("capture stopped")
         } catch {
-            print("[ScreenCaptureService] stopCapture error: \(error.localizedDescription)")
+            let record = CaptureErrorRecord(error: error)
+            CaptureLog.stream.error(
+                "capture stop failed domain=\(record.domain, privacy: .public) code=\(record.code, privacy: .public)"
+            )
         }
         self.stream = nil
     }
@@ -196,6 +203,9 @@ extension ScreenCaptureService: SCStreamOutput {
 
 extension ScreenCaptureService: SCStreamDelegate {
     public func stream(_ stream: SCStream, didStopWithError error: Error) {
-        print("[ScreenCaptureService] stream stopped: \(error.localizedDescription)")
+        let record = CaptureErrorRecord(error: error)
+        CaptureLog.stream.error(
+            "stream stopped unexpectedly domain=\(record.domain, privacy: .public) code=\(record.code, privacy: .public)"
+        )
     }
 }

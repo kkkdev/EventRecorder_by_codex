@@ -17,14 +17,18 @@ let package = Package(
                 "App",
                 "Application/CaptureSessionController.swift",
                 "Application/EventManager.swift",
+                "Application/TeamsAutomationController.swift",
                 "EventRecorder.entitlements",
                 "Infrastructure/AudioFileWriter.swift",
+                "Infrastructure/AccessibilityPermissionManager.swift",
                 "Infrastructure/BrowserWindowController.swift",
                 "Infrastructure/CaptureLogger.swift",
                 "Infrastructure/JpegFrameWriter.swift",
                 "Infrastructure/PermissionManager.swift",
                 "Infrastructure/ReminderService.swift",
                 "Infrastructure/ScreenCaptureService.swift",
+                "Infrastructure/TeamsAccessibilitySnapshotProvider.swift",
+                "Infrastructure/TeamsAutomationNotifier.swift",
                 "Info.plist"
             ],
             sources: [

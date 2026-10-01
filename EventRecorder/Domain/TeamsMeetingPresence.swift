@@ -137,13 +137,17 @@ public enum TeamsMeetingPresenceDetector {
 
     private static let leaveControlTokens = [
         "hang up",
+        "hangup",
         "leave call",
         "leave meeting",
+        "leave",
         "end call",
+        "endcall",
         "通話を終了",
         "通話から退出",
         "会議から退出",
-        "会議を退出"
+        "会議を退出",
+        "退出"
     ]
 
     private static let supportingControlTokens: [TeamsMeetingControlKind: [String]] = [

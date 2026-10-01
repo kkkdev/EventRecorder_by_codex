@@ -179,6 +179,17 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
         permissionManager.requestScreenCaptureAccess()
     }
 
+    public func resolveAvailableTarget(
+        windowID: UInt32,
+        processID: Int32
+    ) async throws -> CaptureTarget? {
+        try await screenCaptureService
+            .availableCaptureTargets(includeOffscreen: true)
+            .first { target in
+                target.windowID == windowID && target.application.processID == processID
+            }
+    }
+
     public func openPermissionSettings() {
         permissionManager.openScreenRecordingSettings()
     }
@@ -276,6 +287,9 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
                 "stream callback failed domain=\(record.domain, privacy: .public) code=\(record.code, privacy: .public)"
             )
             self.recordStreamStopFailure(error)
+            Task {
+                await self.stop(reason: .streamFailed)
+            }
         }
 
         try await screenCaptureService.startCapture(

@@ -43,6 +43,16 @@ final class TeamsMeetingPresenceTests: XCTestCase {
         XCTAssertTrue(TeamsMeetingPresenceDetector.evidence(for: snapshot).isConfirmedCandidate)
     }
 
+    func testCompactLeaveControlLabelIsCandidate() {
+        let snapshot = makeSnapshot(elements: [
+            .init(role: "AXButton", identifier: "hangup-button", label: "Leave"),
+            .init(role: "AXButton", label: "Microphone"),
+            .init(role: "AXButton", label: "Camera")
+        ])
+
+        XCTAssertTrue(TeamsMeetingPresenceDetector.evidence(for: snapshot).isConfirmedCandidate)
+    }
+
     func testNonTeamsApplicationIsRejected() {
         let snapshot = makeSnapshot(
             bundleIdentifier: "com.example.other",

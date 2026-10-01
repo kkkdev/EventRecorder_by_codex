@@ -23,6 +23,47 @@ final class CaptureManifestTests: XCTestCase {
         XCTAssertEqual(decoded.audioFileName, "recording.mp3")
         XCTAssertNil(decoded.completionStatus)
         XCTAssertNil(decoded.captureDiagnostics)
+        XCTAssertNil(decoded.trigger)
+        XCTAssertNil(decoded.captureScope)
+        XCTAssertNil(decoded.audioScope)
+        XCTAssertNil(decoded.stopReason)
+        XCTAssertNil(decoded.segmentGroupID)
+        XCTAssertNil(decoded.microphoneIncluded)
+        XCTAssertNil(decoded.presenceEvidenceVersion)
+    }
+
+    func testRoundTripsTeamsAutomaticMetadataWithoutWindowTitle() throws {
+        let manifest = CaptureManifest(
+            sessionID: "teams-auto",
+            captureTarget: CaptureTarget(
+                windowID: 10,
+                displayID: 20,
+                windowTitle: "",
+                application: makeTarget().application
+            ),
+            intervalSeconds: 1,
+            startedAt: Date(timeIntervalSince1970: 100),
+            endedAt: Date(timeIntervalSince1970: 110),
+            audioFileName: "recording.mp3",
+            imageDirectoryName: "images",
+            frames: [],
+            completionStatus: .completed,
+            trigger: .teamsAutomatic,
+            captureScope: .window,
+            audioScope: .application,
+            stopReason: .participantLeft,
+            segmentGroupID: "segment-group",
+            microphoneIncluded: false,
+            presenceEvidenceVersion: "teams-ax-v1"
+        )
+
+        let decoded = try makeDecoder().decode(
+            CaptureManifest.self,
+            from: makeEncoder().encode(manifest)
+        )
+
+        XCTAssertEqual(decoded, manifest)
+        XCTAssertEqual(decoded.captureTarget.windowTitle, "")
     }
 
     func testRoundTripsAllCompletionStatuses() throws {

@@ -6,6 +6,30 @@ public enum CaptureCompletionStatus: String, Codable, Equatable {
     case completedWithoutAudio
 }
 
+public enum CaptureTrigger: String, Codable, Equatable {
+    case manual
+    case teamsAutomatic
+}
+
+public enum CaptureScope: String, Codable, Equatable {
+    case display
+    case window
+}
+
+public enum CaptureAudioScope: String, Codable, Equatable {
+    case display
+    case application
+}
+
+public enum CaptureStopReason: String, Codable, Equatable {
+    case userStopped
+    case participantLeft
+    case targetWindowLost
+    case teamsTerminated
+    case streamFailed
+    case systemSleep
+}
+
 public struct CaptureErrorRecord: Codable, Equatable {
     public let domain: String
     public let code: Int
@@ -155,6 +179,13 @@ public struct CaptureManifest: Codable, Equatable {
     public let frames: [FrameRecord]
     public let completionStatus: CaptureCompletionStatus?
     public let captureDiagnostics: CaptureDiagnostics?
+    public let trigger: CaptureTrigger?
+    public let captureScope: CaptureScope?
+    public let audioScope: CaptureAudioScope?
+    public let stopReason: CaptureStopReason?
+    public let segmentGroupID: String?
+    public let microphoneIncluded: Bool?
+    public let presenceEvidenceVersion: String?
 
     public init(
         sessionID: String,
@@ -167,7 +198,14 @@ public struct CaptureManifest: Codable, Equatable {
         imageDirectoryName: String,
         frames: [FrameRecord],
         completionStatus: CaptureCompletionStatus? = nil,
-        captureDiagnostics: CaptureDiagnostics? = nil
+        captureDiagnostics: CaptureDiagnostics? = nil,
+        trigger: CaptureTrigger? = nil,
+        captureScope: CaptureScope? = nil,
+        audioScope: CaptureAudioScope? = nil,
+        stopReason: CaptureStopReason? = nil,
+        segmentGroupID: String? = nil,
+        microphoneIncluded: Bool? = nil,
+        presenceEvidenceVersion: String? = nil
     ) {
         self.sessionID = sessionID
         self.captureTarget = captureTarget
@@ -180,6 +218,13 @@ public struct CaptureManifest: Codable, Equatable {
         self.frames = frames
         self.completionStatus = completionStatus
         self.captureDiagnostics = captureDiagnostics
+        self.trigger = trigger
+        self.captureScope = captureScope
+        self.audioScope = audioScope
+        self.stopReason = stopReason
+        self.segmentGroupID = segmentGroupID
+        self.microphoneIncluded = microphoneIncluded
+        self.presenceEvidenceVersion = presenceEvidenceVersion
     }
 
     public func write(to directory: URL, fileName: String = "manifest.json") throws -> URL {

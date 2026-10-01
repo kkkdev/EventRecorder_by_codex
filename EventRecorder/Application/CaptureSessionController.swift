@@ -128,6 +128,10 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
     }
 
     public func stop() async {
+        await stop(reason: .userStopped)
+    }
+
+    public func stop(reason: CaptureStopReason) async {
         guard state.canStop else {
             return
         }
@@ -140,6 +144,9 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
 
         DispatchQueue.main.async {
             self.state = .stopping
+        }
+        ioQueue.sync {
+            activeSession?.stopReason = reason
         }
 
         snapshotScheduler.stop()
@@ -215,7 +222,8 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
                 frameIndex: 0,
                 captureDiagnosticsAccumulator: CaptureDiagnosticsAccumulator(),
                 firstAudioWriteError: nil,
-                firstStreamError: nil
+                firstStreamError: nil,
+                stopReason: nil
             )
         }
 
@@ -270,7 +278,10 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
             self.recordStreamStopFailure(error)
         }
 
-        try await screenCaptureService.startCapture(target: settings.target)
+        try await screenCaptureService.startCapture(
+            target: settings.target,
+            contentMode: settings.contentMode
+        )
         CaptureLog.session.notice("session capture started")
 
         try snapshotScheduler.start(intervalSeconds: settings.intervalSeconds) { [weak self] in
@@ -454,9 +465,21 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
         captureDiagnostics: CaptureDiagnostics,
         completionStatus: CaptureCompletionStatus?
     ) -> CaptureManifest {
-        CaptureManifest(
+        let persistedTarget: CaptureTarget
+        if session.settings.trigger == .teamsAutomatic {
+            persistedTarget = CaptureTarget(
+                windowID: session.settings.target.windowID,
+                displayID: session.settings.target.displayID,
+                windowTitle: "",
+                application: session.settings.target.application
+            )
+        } else {
+            persistedTarget = session.settings.target
+        }
+
+        return CaptureManifest(
             sessionID: session.sessionID,
-            captureTarget: session.settings.target,
+            captureTarget: persistedTarget,
             intervalSeconds: session.settings.intervalSeconds,
             startedAt: session.startedAt,
             endedAt: Date(),
@@ -465,7 +488,14 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
             imageDirectoryName: session.imageDirectory.lastPathComponent,
             frames: session.frames,
             completionStatus: completionStatus,
-            captureDiagnostics: captureDiagnostics
+            captureDiagnostics: captureDiagnostics,
+            trigger: session.settings.trigger,
+            captureScope: session.settings.contentMode == .window ? .window : .display,
+            audioScope: session.settings.contentMode == .window ? .application : .display,
+            stopReason: session.stopReason,
+            segmentGroupID: session.settings.segmentGroupID,
+            microphoneIncluded: false,
+            presenceEvidenceVersion: session.settings.presenceEvidenceVersion
         )
     }
 
@@ -578,6 +608,7 @@ public final class CaptureSessionController: ObservableObject, CaptureSessionCon
         var captureDiagnosticsAccumulator: CaptureDiagnosticsAccumulator
         var firstAudioWriteError: Error?
         var firstStreamError: Error?
+        var stopReason: CaptureStopReason?
     }
 
     private struct FinalizedSession {

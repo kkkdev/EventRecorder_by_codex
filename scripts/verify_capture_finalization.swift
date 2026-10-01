@@ -142,6 +142,9 @@ private enum CaptureFinalizationVerifier {
         try expect(decoded.audioFileName == "recording.mp3", "legacy audio file name")
         try expect(decoded.completionStatus == nil, "legacy completion status must be optional")
         try expect(decoded.captureDiagnostics == nil, "legacy diagnostics must be optional")
+        try expect(decoded.trigger == nil, "legacy trigger must be optional")
+        try expect(decoded.captureScope == nil, "legacy capture scope must be optional")
+        try expect(decoded.stopReason == nil, "legacy stop reason must be optional")
     }
 
     private static func verifyNoAudioManifestOutput() throws {

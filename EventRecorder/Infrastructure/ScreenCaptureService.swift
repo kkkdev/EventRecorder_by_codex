@@ -9,7 +9,7 @@ public protocol ScreenCaptureServiceProtocol: AnyObject {
     var onStreamError: ((Error) -> Void)? { get set }
 
     func availableCaptureTargets(includeOffscreen: Bool) async throws -> [CaptureTarget]
-    func startCapture(target: CaptureTarget) async throws
+    func startCapture(target: CaptureTarget, contentMode: CaptureContentMode) async throws
     func stopCapture() async throws
 }
 
@@ -84,7 +84,7 @@ public final class ScreenCaptureService: NSObject, ScreenCaptureServiceProtocol 
         }
     }
 
-    public func startCapture(target: CaptureTarget) async throws {
+    public func startCapture(target: CaptureTarget, contentMode: CaptureContentMode) async throws {
         if stream != nil {
             try await stopCapture()
         }
@@ -104,18 +104,25 @@ public final class ScreenCaptureService: NSObject, ScreenCaptureServiceProtocol 
             throw ScreenCaptureServiceError.targetApplicationNotFound(target.application.processID)
         }
 
-        let targetDisplay = content.displays.first(where: { $0.displayID == target.displayID })
-            ?? resolveDisplay(for: selectedWindow.frame, displays: content.displays)
-            ?? content.displays.first
-        guard let targetDisplay else {
-            throw ScreenCaptureServiceError.displayNotFound(target.displayID)
-        }
-
-        // Meet/Chrome の無音事象を避けるため、音声は display ベースにフォールバックして取得する。
-        let filter = SCContentFilter(display: targetDisplay, excludingWindows: [])
         let configuration = SCStreamConfiguration()
-        configuration.width = targetDisplay.width
-        configuration.height = targetDisplay.height
+        let filter: SCContentFilter
+        switch contentMode {
+        case .display:
+            let targetDisplay = content.displays.first(where: { $0.displayID == target.displayID })
+                ?? resolveDisplay(for: selectedWindow.frame, displays: content.displays)
+                ?? content.displays.first
+            guard let targetDisplay else {
+                throw ScreenCaptureServiceError.displayNotFound(target.displayID)
+            }
+            filter = SCContentFilter(display: targetDisplay, excludingWindows: [])
+            configuration.width = targetDisplay.width
+            configuration.height = targetDisplay.height
+        case .window:
+            // 自動録画では対象を見失っても画面全体へフォールバックしない。
+            filter = SCContentFilter(desktopIndependentWindow: selectedWindow)
+            configuration.width = max(1, Int(selectedWindow.frame.width * 2))
+            configuration.height = max(1, Int(selectedWindow.frame.height * 2))
+        }
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: 30)
         configuration.queueDepth = 5
         configuration.capturesAudio = true

@@ -79,6 +79,26 @@ final class CaptureSettingsTests: XCTestCase {
         }
     }
 
+    func testDecodesLegacySettingsWithManualDisplayDefaults() throws {
+        let legacy = LegacyCaptureSettings(
+            target: makeTarget(windowID: 1, displayID: 1),
+            intervalSeconds: 1,
+            jpegQuality: 0.9,
+            outputDirectory: try makeTemporaryDirectory(),
+            audioBitrateKbps: 128
+        )
+
+        let decoded = try JSONDecoder().decode(
+            CaptureSettings.self,
+            from: JSONEncoder().encode(legacy)
+        )
+
+        XCTAssertEqual(decoded.contentMode, .display)
+        XCTAssertEqual(decoded.trigger, .manual)
+        XCTAssertNil(decoded.segmentGroupID)
+        XCTAssertNil(decoded.presenceEvidenceVersion)
+    }
+
     private func makeTarget(windowID: UInt32, displayID: UInt32) -> CaptureTarget {
         CaptureTarget(
             windowID: windowID,
@@ -98,4 +118,12 @@ final class CaptureSettingsTests: XCTestCase {
         try FileManager.default.createDirectory(at: path, withIntermediateDirectories: true)
         return path
     }
+}
+
+private struct LegacyCaptureSettings: Codable {
+    let target: CaptureTarget
+    let intervalSeconds: Double
+    let jpegQuality: Double
+    let outputDirectory: URL
+    let audioBitrateKbps: Int
 }

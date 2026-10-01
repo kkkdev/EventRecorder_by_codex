@@ -14,6 +14,9 @@ macOS 13+ 専用のローカルGUIアプリです。Windows は対象外です�
 
 ## ドキュメント
 - 実行手順: `./docs/how_to_run.md`
+- Teams自動録画設計: `./docs/teams_automation_design.md`
+- Teams自動録画タスク計画: `./docs/teams_automation_task_plan.md`
+- Teams自動録画調査: `./docs/teams_automation_research.md`
 - 脆弱性報告: `./SECURITY.md`
 - コントリビューション: `./CONTRIBUTING.md`
 

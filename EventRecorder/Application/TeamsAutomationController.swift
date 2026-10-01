@@ -158,6 +158,9 @@ public final class TeamsAutomationController: ObservableObject {
 
         do {
             let batch = try await snapshotProvider.snapshot()
+            guard isMonitoring, !Task.isCancelled else {
+                return
+            }
             let rawCandidate = TeamsMeetingPresenceDetector.uniqueCandidate(in: batch.windows)
             let stableCandidate = stabilizer.observe(rawCandidate)
             let actions = lifecycle.observe(
@@ -174,14 +177,14 @@ public final class TeamsAutomationController: ObservableObject {
             updateCountdown()
         } catch TeamsAccessibilitySnapshotError.permissionDenied {
             message = "Accessibility権限がありません。監視を停止しました。"
-            stopPollingAfterFailure(status: "Accessibility権限が必要です")
+            await stopPollingAfterFailure(status: "Accessibility権限が必要です")
         } catch {
             let record = CaptureErrorRecord(error: error)
             CaptureLog.teams.error(
                 "teams monitoring failed domain=\(record.domain, privacy: .public) code=\(record.code, privacy: .public)"
             )
             message = "Teams会議の監視に失敗しました。"
-            stopPollingAfterFailure(status: "監視エラー")
+            await stopPollingAfterFailure(status: "監視エラー")
         }
     }
 
@@ -229,6 +232,10 @@ public final class TeamsAutomationController: ObservableObject {
                     presenceEvidenceVersion: Self.presenceEvidenceVersion
                 )
             )
+            if !isMonitoring {
+                await captureController.stop(reason: .userStopped)
+                lifecycle.markCaptureStopped(suppressCurrentMeeting: true)
+            }
         case .stopCapture(let reason):
             CaptureLog.teams.notice("automatic capture stopping reason=\(reason.rawValue, privacy: .public)")
             await captureController.stop(reason: reason)
@@ -244,9 +251,12 @@ public final class TeamsAutomationController: ObservableObject {
         pendingStartSeconds = max(0, Int(ceil(deadline.timeIntervalSinceNow)))
     }
 
-    private func stopPollingAfterFailure(status: String) {
+    private func stopPollingAfterFailure(status: String) async {
         pollTask?.cancel()
         pollTask = nil
+        if lifecycle.activeWindowID != nil {
+            await captureController.stop(reason: .targetWindowLost)
+        }
         _ = lifecycle.reset()
         stabilizer.reset()
         pendingStartSeconds = nil

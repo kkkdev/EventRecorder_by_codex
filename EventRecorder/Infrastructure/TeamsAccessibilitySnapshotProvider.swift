@@ -78,6 +78,7 @@ public final class TeamsAccessibilitySnapshotProvider: TeamsAccessibilitySnapsho
         descriptors: [WindowDescriptor]
     ) -> [TeamsAccessibilityWindowSnapshot] {
         let applicationElement = AXUIElementCreateApplication(processID)
+        AXUIElementSetMessagingTimeout(applicationElement, 1)
         guard let windows = elementArrayAttribute(applicationElement, kAXWindowsAttribute) else {
             return []
         }

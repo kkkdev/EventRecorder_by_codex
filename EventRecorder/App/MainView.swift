@@ -4,6 +4,7 @@ import SwiftUI
 struct MainView: View {
     @ObservedObject var controller: CaptureSessionController
     @ObservedObject var eventManager: EventManager
+    @ObservedObject var teamsAutomationController: TeamsAutomationController
 
     @State private var selectedTargetWindowID: UInt32 = 0
     @State private var includeOffscreenTargets = false
@@ -26,7 +27,7 @@ struct MainView: View {
                     .font(.title)
                     .bold()
 
-                Text("手動録画 + 汎用URLイベント + 10分前通知")
+                Text("手動録画 + Teams会議自動録画 + 汎用URLイベント")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
 
@@ -35,7 +36,66 @@ struct MainView: View {
                         LabeledContent("録画状態", value: controller.state.statusText)
                         LabeledContent("通知権限", value: reminderStatusText)
                         LabeledContent("Screen Recording権限", value: controller.hasScreenRecordingPermission() ? "許可済み" : "未許可")
+                        LabeledContent(
+                            "Accessibility権限",
+                            value: teamsAutomationController.hasAccessibilityPermission() ? "許可済み" : "未許可"
+                        )
+                        LabeledContent("Teams自動録画", value: teamsAutomationController.statusText)
                         LabeledContent("ffmpeg", value: controller.hasFFmpeg() ? "検出済み" : "未検出")
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                GroupBox("Teams自動録画") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Toggle(
+                            "Teams会議への参加を検出して自動録画",
+                            isOn: Binding(
+                                get: { teamsAutomationController.isMonitoring },
+                                set: { enabled in
+                                    if enabled {
+                                        startTeamsMonitoring()
+                                    } else {
+                                        Task {
+                                            await teamsAutomationController.stopMonitoring()
+                                        }
+                                    }
+                                }
+                            )
+                        )
+                        .accessibilityIdentifier("teams.automationToggle")
+
+                        Text("アプリ起動中だけ監視します。scheduled meeting、Meet Now、1対1・グループ通話が対象です。本人マイクは収録しません。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        HStack {
+                            Button("Accessibility権限を確認") {
+                                if !teamsAutomationController.requestAccessibilityPermission() {
+                                    teamsAutomationController.openAccessibilitySettings()
+                                }
+                            }
+
+                            Button("通知許可をリクエスト") {
+                                Task {
+                                    await eventManager.requestNotificationPermission()
+                                }
+                            }
+
+                            if let seconds = teamsAutomationController.pendingStartSeconds {
+                                Text("\(seconds)秒後に録画開始")
+                                    .foregroundStyle(.orange)
+                                Button("今回の自動録画を取消") {
+                                    teamsAutomationController.cancelPendingStart()
+                                }
+                                .accessibilityIdentifier("teams.cancelPendingButton")
+                            }
+                        }
+
+                        if let message = teamsAutomationController.message {
+                            Text(message)
+                                .foregroundStyle(.orange)
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -112,7 +172,7 @@ struct MainView: View {
 
                     Button("停止") {
                         Task {
-                            await controller.stop()
+                            await teamsAutomationController.stopCaptureByUser()
                         }
                     }
                     .disabled(!controller.state.canStop)
@@ -264,19 +324,7 @@ struct MainView: View {
 
     private func startCapture() {
         localMessage = nil
-
-        guard let intervalSeconds = Double(intervalSecondsText) else {
-            localMessage = "スクショ間隔は数値で入力してください。"
-            return
-        }
-        guard let jpegQuality = Double(jpegQualityText) else {
-            localMessage = "JPEG品質は数値で入力してください。"
-            return
-        }
-        guard let audioBitrate = Int(audioBitrateText) else {
-            localMessage = "音声ビットレートは整数で入力してください。"
-            return
-        }
+        guard let preferences = makeCapturePreferences() else { return }
         guard let target = controller.availableTargets.first(where: { $0.windowID == selectedTargetWindowID }) else {
             localMessage = "キャプチャ対象ウィンドウを選択してください。"
             return
@@ -285,15 +333,55 @@ struct MainView: View {
         let outputDirectoryURL = URL(fileURLWithPath: outputDirectoryPath, isDirectory: true)
         let settings = CaptureSettings(
             target: target,
-            intervalSeconds: intervalSeconds,
-            jpegQuality: jpegQuality,
+            intervalSeconds: preferences.intervalSeconds,
+            jpegQuality: preferences.jpegQuality,
             outputDirectory: outputDirectoryURL,
-            audioBitrateKbps: audioBitrate
+            audioBitrateKbps: preferences.audioBitrateKbps
         )
 
         Task {
             await controller.start(settings: settings)
         }
+    }
+
+    private func startTeamsMonitoring() {
+        localMessage = nil
+        guard let preferences = makeCapturePreferences() else { return }
+        teamsAutomationController.startMonitoring(preferences: preferences)
+    }
+
+    private func makeCapturePreferences() -> TeamsAutomationCapturePreferences? {
+        guard let intervalSeconds = Double(intervalSecondsText) else {
+            localMessage = "スクショ間隔は数値で入力してください。"
+            return nil
+        }
+        guard let jpegQuality = Double(jpegQualityText) else {
+            localMessage = "JPEG品質は数値で入力してください。"
+            return nil
+        }
+        guard let audioBitrate = Int(audioBitrateText) else {
+            localMessage = "音声ビットレートは整数で入力してください。"
+            return nil
+        }
+        guard CaptureSettings.intervalRange.contains(intervalSeconds) else {
+            localMessage = "スクショ間隔は0.5〜120秒で入力してください。"
+            return nil
+        }
+        guard CaptureSettings.jpegQualityRange.contains(jpegQuality) else {
+            localMessage = "JPEG品質は0.1〜1.0で入力してください。"
+            return nil
+        }
+        guard CaptureSettings.bitrateRange.contains(audioBitrate) else {
+            localMessage = "音声ビットレートは64〜320kbpsで入力してください。"
+            return nil
+        }
+
+        return TeamsAutomationCapturePreferences(
+            intervalSeconds: intervalSeconds,
+            jpegQuality: jpegQuality,
+            outputDirectory: URL(fileURLWithPath: outputDirectoryPath, isDirectory: true),
+            audioBitrateKbps: audioBitrate
+        )
     }
 
     private func syncTargetSelectionIfNeeded() {

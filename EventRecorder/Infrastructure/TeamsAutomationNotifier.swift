@@ -18,6 +18,14 @@ public final class TeamsAutomationNotifier: TeamsAutomationNotifying {
             content: content,
             trigger: nil
         )
-        UNUserNotificationCenter.current().add(request)
+        UNUserNotificationCenter.current().add(request) { error in
+            guard let error else {
+                return
+            }
+            let record = CaptureErrorRecord(error: error)
+            CaptureLog.teams.error(
+                "automatic capture notification failed domain=\(record.domain, privacy: .public) code=\(record.code, privacy: .public)"
+            )
+        }
     }
 }

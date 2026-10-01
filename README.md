@@ -2,11 +2,13 @@
 
 macOS 13+ 専用のローカルGUIアプリです。Windows は対象外です。以下を提供します。
 
-- 手動開始/手動停止の録画（自動開始/自動停止なし）
+- 手動開始/手動停止の録画
+- アプリ起動中だけ動くMicrosoft Teams会議の自動録画（5秒の取消猶予あり）
 - 対象アプリのウィンドウを選択（録画対象ディスプレイ解決に利用）
 - 内部音声を収録し、sampleがある場合は停止時に MP3 へ変換（`ffmpeg` 必須）
 - 音声sampleが0件でも、画像と診断manifestを警告付きで部分保存
-- Meet/Chrome の無音対策として、音声収録は display フォールバックで安定化
+- 手動録画はdisplay単位、自動録画はTeams会議windowだけを収録
+- Teams自動録画はアプリ音声だけを対象とし、本人マイクを収録しない
 - 一定間隔でJPEGスクリーンショット保存（0.5〜120秒）
 - 汎用イベント管理（`URL / 開始日時 / 終了日時`）
 - イベント開始10分前のローカル通知
@@ -51,9 +53,11 @@ BUNDLE_IDENTIFIER=com.example.eventrecorder ./scripts/build_app.sh
     - `completedWithoutAudio`: sampleが0件・MP3なしの部分保存
   - `audioDiagnostics`（`peakLevelDBFS` / `rmsLevelDBFS` / `nonSilentSampleCount`）
   - `captureDiagnostics`（描画可能video sample数、audio callback数、audio write成否、audio PTS、sanitized error）
+  - Teams自動録画では`trigger`、`captureScope`、`audioScope`、`stopReason`、`segmentGroupID`を記録（window titleは保存しない）
 
 補足:
-- 現在は Chrome Meet の無音回避のため、選択ウィンドウが属するディスプレイ単位で収録します。
+- 手動録画はChrome Meetの無音回避のため、選択ウィンドウが属するディスプレイ単位で収録します。
+- Teams自動録画は画面全体へフォールバックせず、対象windowを見失うと停止します。
 - `completedWithoutAudio`は「音声が再生されていなかった」とは断定しません。`captureDiagnostics`とUnified Loggingで、sample未配信と書込失敗を切り分けてください。
 
 既存セッションを診断する場合:
@@ -70,6 +74,8 @@ swift test
 Command Line Toolsだけでも実行できる停止/finalize検証:
 ```bash
 ./scripts/verify_capture_finalization.sh
+./scripts/verify_teams_presence.sh
+./scripts/verify_teams_automation.sh
 ```
 
 UIテスト（ローカル実行）:
@@ -79,7 +85,9 @@ xcodebuild -project ./EventRecorder.xcodeproj -scheme EventRecorder -destination
 ```
 
 ## 注意事項
-- 画面収録・音声収録・通知は macOS の権限許可が必要です。
+- 画面収録・システム音声・通知は macOS の権限許可が必要です。Teams自動録画にはAccessibility権限も必要です。
+- Teams自動監視は起動時OFFです。ログイン項目や常駐起動は登録しません。
+- Teams自動録画から外部サービスへの送信は行いません。
 - sampleありの無音は失敗にせず、MP3を保存して警告を表示します。
 - sampleが0件の場合も失敗にせず、MP3なしで画像とmanifestを保存して警告を表示します。
 - append、stream停止、ffmpeg、manifest書込の実エラーは失敗のまま扱い、生成済みCAF・画像を保持します。

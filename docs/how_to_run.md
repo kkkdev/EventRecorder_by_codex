@@ -39,6 +39,7 @@ BUNDLE_IDENTIFIER=com.example.eventrecorder ./scripts/build_app.sh
 3. `権限確認` を押す。
 4. macOS の Screen Recording（環境によっては Screen & System Audio Recording）を許可。
 5. 通知を使う場合は `通知許可をリクエスト` を押して許可。
+6. Teams自動録画を使う場合は `Accessibility権限を確認` を押し、Event Recorderを許可。
 
 ## 4. 録画手順（手動）
 1. `キャプチャ対象ウィンドウ` を選択。
@@ -67,7 +68,25 @@ BUNDLE_IDENTIFIER=com.example.eventrecorder ./scripts/build_app.sh
 
 また、現在は無音回避のため「選択ウィンドウが属するディスプレイ単位」で収録します。
 
-## 5. イベント手順（汎用URL）
+## 5. Teams会議の自動録画
+
+1. Event Recorderを手動で起動する。
+2. Screen Recording、Accessibility、通知の各権限を確認する。
+3. 保存先と録画品質を設定する。
+4. `Teams会議への参加を検出して自動録画` をONにする。
+5. Teamsでscheduled meeting、Meet Now、1対1通話、またはグループ通話へ参加する。
+6. 検出後5秒間は `今回の自動録画を取消` で開始を取り消せる。
+7. 退出、Teams終了、対象window消失、スリープで自動停止する。UIの `停止` でも停止できる。
+
+自動録画の境界:
+
+- 映像はTeams会議windowだけ。画面全体にはフォールバックしない。
+- 音声はScreenCaptureKitがTeams filterへ配信するシステム音声。本人マイク用outputは追加しない。
+- 会議名やwindow titleをログへ出さず、自動録画manifestにもwindow titleを保存しない。
+- 外部サービスへの送信、Google連携、Notebook連携は行わない。
+- 監視状態は保存せず、アプリ起動時は必ずOFF。ログイン項目も登録しない。
+
+## 6. イベント手順（汎用URL）
 1. `タイトル(任意)`、`URL`、`開始日時`、`終了日時` を入力して `イベント追加`。
 2. `開始10分前` に通知を受け取る。
 3. 通知の `開く` または一覧の `開く` / `全画面で開く` で専用ブラウザを表示。
@@ -76,12 +95,13 @@ BUNDLE_IDENTIFIER=com.example.eventrecorder ./scripts/build_app.sh
 - `開始10分前` が過去のイベントは「通知なし」で保存されます。
 - URL は `http/https` のみ、`開始 < 終了` が必須です。
 
-## 6. 既知の制限
-- 録画は手動開始/停止のみ（自動録画なし）。
+## 7. 既知の制限
+- TeamsのUI更新や表示言語によりAccessibility判定を更新する必要があります。曖昧な場合は安全側で自動開始しません。
+- Teams window filterで相手音声だけが安定して届くこと、他アプリ音が混入しないことは実会議での回帰確認が必要です。
 - 音声sampleが届かない場合でも画像とmanifestは保存しますが、根本原因の特定には診断情報とUnified Loggingが必要です。
 - DRM保護コンテンツ等は録音できない場合があります。
 
-## 6.1 音声sampleが0件だった場合
+## 7.1 音声sampleが0件だった場合
 停止時に `音声サンプルを取得できなかったため、MP3なしで画像と診断情報を保存しました。` と表示された場合、セッションは`completedWithoutAudio`です。MP3は生成されませんが、画像とmanifestは保存済みです。
 
 この状態だけから「対象アプリで音声が再生されていなかった」とは断定できません。
@@ -92,7 +112,7 @@ BUNDLE_IDENTIFIER=com.example.eventrecorder ./scripts/build_app.sh
 3. キャプチャ対象と音声再生状態を確認する。
 4. 必要に応じてシステム設定からScreen Recording権限を再許可する。
 
-## 6.2 音声sampleはあるが無音だった場合
+## 7.2 音声sampleはあるが無音だった場合
 停止時に `音声サンプルは取得できましたが無音を検出しました...` と表示された場合、MP3とmanifestは保存済みで、状態は`completedWithWarnings`です。
 
 確認手順:
@@ -101,7 +121,7 @@ BUNDLE_IDENTIFIER=com.example.eventrecorder ./scripts/build_app.sh
 3. `システム設定 > プライバシーとセキュリティ > 画面収録（または Screen & System Audio Recording）`でEventRecorderを再許可する。
 4. Chrome/Meet再起動後に再実行し、必要なら`./scripts/analyze_session_audio.sh <session_dir>`で波形レベルを確認する。
 
-## 6.3 全画面化後に開始失敗する場合
+## 7.3 全画面化後に開始失敗する場合
 `全画面化などで対象ウィンドウが変化したため開始できません。` と表示される場合は、対象ウィンドウIDが古くなっています。
 
 確認手順:
@@ -109,7 +129,7 @@ BUNDLE_IDENTIFIER=com.example.eventrecorder ./scripts/build_app.sh
 2. `キャプチャ対象ウィンドウ` を再選択する。
 3. その状態で `開始` する。
 
-## 6.4 複数デスクトップで候補に出ない場合
+## 7.4 複数デスクトップで候補に出ない場合
 別デスクトップ（Spaces）のウィンドウは既定状態では候補に出ないことがあります。
 
 確認手順:
@@ -117,11 +137,13 @@ BUNDLE_IDENTIFIER=com.example.eventrecorder ./scripts/build_app.sh
 2. `対象更新` を押して候補を再読み込みする。
 3. 対象ウィンドウを再選択して `開始` する。
 
-## 7. 検証コマンド
+## 8. 検証コマンド
 ```bash
 swift build
 swift test
 ./scripts/verify_capture_finalization.sh
+./scripts/verify_teams_presence.sh
+./scripts/verify_teams_automation.sh
 xcodegen generate
 xcodebuild -project ./EventRecorder.xcodeproj -scheme EventRecorder -destination 'platform=macOS' build
 ./scripts/build_app.sh
@@ -132,7 +154,7 @@ codesign --verify --deep --strict ./build/EventRecorder.app
 この環境では `swift test` が `XCTest not available` で失敗する場合があります。
 また、`xcodebuild` はフルXcodeが選択されている環境で実行してください。
 
-### 7.1 検証時 の確認結果
+### 8.1 検証時 の音声保存修正確認結果
 
 - `swift build`: 成功
 - `swift test`: 未達（Command Line Tools環境で`XCTest not available`）
@@ -156,7 +178,26 @@ codesign --verify --deep --strict ./build/EventRecorder.app
 
 上記を未達のリリースゲートとして扱い、最終完了とは判定しません。実録画の詳細は`docs/research.md`のT5を参照してください。
 
-## 8. UI自動テスト（ローカル）
+### 8.2 検証時 のTeams自動録画確認結果
+
+- `swift build`: 成功
+- `./scripts/verify_capture_finalization.sh`: 成功
+- `./scripts/verify_teams_presence.sh`: 成功
+- `./scripts/verify_teams_automation.sh`: 成功
+- `./scripts/build_app.sh`: 成功
+- app binary: arm64
+- `codesign --verify --deep --strict`: 成功
+- `xcodegen generate`: 成功
+- `xcodebuild`: 未達（active developer directoryがCommand Line Tools）
+- 外部送信、本人マイク、login item実装の静的監査: 該当なし
+- workspace appの別PID起動スモーク: 成功
+- UI画面取得: 未達（画面操作基盤がタイムアウト）
+- `swift test`: 未達（Command Line Tools環境でXCTest利用不可）
+- 実Teams会議4種、相手音声、他アプリ音分離: 未達
+
+未達項目は成功扱いにせず、実機リリースゲートとして残します。
+
+## 9. UI自動テスト（ローカル）
 UIテストターゲットを含むプロジェクトを生成して実行します。
 
 ```bash
@@ -169,7 +210,7 @@ xcodebuild -project ./EventRecorder.xcodeproj -scheme EventRecorder -destination
 - URLバリデーションエラー表示
 - イベント追加/削除の基本導線
 
-## 9. セッション音声の診断コマンド
+## 10. セッション音声の診断コマンド
 既存セッションの無音判定をCLIで確認できます。
 
 ```bash
@@ -200,6 +241,6 @@ log show --last 10m --style compact \
 
 ログにはウィンドウタイトル、URL、保存先絶対パスを出さず、固定イベント名、整数カウンタ、sanitized error domain/codeだけを記録します。
 
-## 10. 利用上の注意
+## 11. 利用上の注意
 - 録画・録音の実行前に、関係者の同意、法令、サービス利用規約、所属組織のルールを利用者自身で確認してください。
 - DRM保護コンテンツやサービス規約で録画・録音が禁止されているコンテンツには使用しないでください。

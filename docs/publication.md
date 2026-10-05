@@ -57,6 +57,15 @@ git -c user.name='EventRecorder contributors' \
     -c commit.gpgsign=false commit
 ```
 
+```bash
+python3 scripts/test_publication.py
+python3 scripts/verify_publication.py --ref HEAD
+```
+
+指定refの全commit metadata・全blob・各treeの全path、現在のignoreルール、合成fixtureの追跡を検査する。別リポジトリの元identityも検査する場合は `--private-source-repo <local-source-repo>` を追加する。検出値や個人pathは出力せず、categoryとobject IDのみを返す。終了0は検査通過、1は検出、2は検査不能で、1/2とも公開を止める。
+
+検査はコミット後に実行する。未コミット・ignoredデータ、Git reflogや不要ref、未知のtoken形式、画像内の情報は網羅しない。外部へ送るrefを必ず限定し、未検査ファイルをReleaseへ添付しない。
+
 ## 調査根拠
 
 公開データは送信せず、Git公式仕様を確認した。確認日: 2026-10-05。
@@ -84,3 +93,7 @@ T1自己レビュー: 1/5 対象履歴の限定、2/5 tree・親・mode保持、
 Markdownの目次・見出し・表・フェンスを静的確認する。mdtsは環境に見つからず、新規依存を取得しないためブラウザpreviewは未実施。本資料は4項目の番号手順で足りるため新規Mermaid図を設けない。
 
 Context Compression: T1完了。元履歴は保持。T2/T3と最終検査が残る。push・既存アプリ・TCCは対象外。
+
+T2: 録画セッション・音声動画・鍵証明書・イベント・raw/診断/撮影ディレクトリをignoreに追加。公開画像と合成no-audio manifestは対象外。検査scriptと合成回帰テストを追加した。履歴で削除済みのsecret、非匿名metadata、同一blobの別pathも検査する。
+
+T2自己レビュー: 1/5 設計一致、2/5 過去blobと複数pathの網羅、3/5 合成テストと検出値非出力、4/5 README・運用手順同期、5/5 依存・CI・録画仕様不変はpass。検査用正規表現そのものをpathと誤判定するケースを修正し、自己検査を含むPython回帰8ケース成功。公開前の全履歴検査はコミット後に再実行する。

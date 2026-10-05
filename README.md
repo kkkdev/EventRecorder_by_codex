@@ -21,6 +21,7 @@ macOS 13+ 専用のローカルGUIアプリです。Windows は対象外です�
 - Teams自動録画調査: `./docs/teams_automation_research.md`
 - 脆弱性報告: `./SECURITY.md`
 - コントリビューション: `./CONTRIBUTING.md`
+- 公開前の匿名化・検査: `./docs/publication.md`
 
 ## クイックスタート
 ```bash
@@ -83,6 +84,15 @@ UIテスト（ローカル実行）:
 xcodegen generate
 xcodebuild -project ./EventRecorder.xcodeproj -scheme EventRecorder -destination 'platform=macOS' -only-testing:EventRecorderUITests test
 ```
+
+公開前のローカル検査（Python標準ライブラリのみ）:
+
+```bash
+python3 scripts/test_publication.py
+python3 scripts/verify_publication.py --ref HEAD
+```
+
+検査対象は指定refの全履歴です。専用secret scannerの代替保証ではありません。実manifest、録画、会議URLを含むイベントデータ、生の診断出力は公開しないでください。
 
 ## 注意事項
 - 画面収録・システム音声・通知は macOS の権限許可が必要です。Teams自動録画にはAccessibility権限も必要です。

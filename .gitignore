@@ -14,3 +14,28 @@ EventRecorder.xcodeproj/
 *.log
 .vscode/
 .idea/
+
+# 実録画・診断データ（公開用の合成fixtureとは分離する）
+**/session_*/
+recordings/
+captures/
+screenshots/
+raw/
+diagnostics/
+events.json
+*.caf
+*.mp3
+*.wav
+*.aiff
+*.mp4
+*.mov
+
+# 鍵・証明書はテスト目的でも実物をコミットしない
+*.key
+*.pem
+*.p12
+*.pfx
+
+# ローカル公開検査のPythonキャッシュ
+__pycache__/
+*.pyc

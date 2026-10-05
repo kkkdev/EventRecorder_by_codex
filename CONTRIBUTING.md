@@ -19,6 +19,7 @@ xcodegen generate
 - 録画・録音機能はmacOS権限、同意、法令、サービス利用規約に関わります。仕様変更時はREADMEと実行手順の注意事項も更新してください。
 - 秘密情報、個人情報、ローカル絶対パス、録画成果物、調査用rawデータをコミットしないでください。
 - 生成物の `EventRecorder.xcodeproj/`、`.build/`、`build/` はコミット対象外です。
+- 公開用コミットの匿名identityと全履歴の検査手順は [公開前の検査](docs/publication.md) を参照してください。ignoreは既に追跡された情報を隠しません。
 
 ## Pull Request
 1. 目的を1つに絞ってください。

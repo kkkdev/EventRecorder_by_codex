@@ -33,6 +33,7 @@ BUNDLE_IDENTIFIER=com.example.eventrecorder ./scripts/build_app.sh
 - `scripts/build_app.sh` は Bundle ID ベースの designated requirement で署名します。
 - macOS権限が壊れた場合でも、公開リポジトリでは自動TCC reset用スクリプトを提供しません。必要な場合は利用者がシステム設定から再許可してください。
 - 公開・診断資料共有前には [公開前の検査](publication.md) を実施してください。録画内容、実manifest、イベントURL、生の診断出力は公開しません。
+- 直接ビルドはリポジトリ起点の相対Swiftソースパスを使い、Python標準ライブラリのバイナリ検査が通った後に署名します。検出・検査不能なら終了して配布しません。Xcode生成物は別途同じ検査へ通してください。
 
 ## 3. 初回権限設定
 1. アプリ起動。

@@ -36,7 +36,8 @@ esac
 
 SWIFT_SOURCES=()
 while IFS= read -r source_file; do
-  SWIFT_SOURCES+=("${source_file}")
+  # Swiftのdiagnostic文字列へ個人のビルド元絶対pathを埋め込まない。
+  SWIFT_SOURCES+=("${source_file#"${ROOT_DIR}/"}")
 done < <(find "${ROOT_DIR}/EventRecorder" -type f -name '*.swift' | sort)
 if [[ ${#SWIFT_SOURCES[@]} -eq 0 ]]; then
   echo "error: Swiftソースが見つかりません。" >&2
@@ -50,6 +51,8 @@ cp "${ROOT_DIR}/EventRecorder/Info.plist" "${CONTENTS_DIR}/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${BUNDLE_IDENTIFIER}" "${CONTENTS_DIR}/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleName ${APP_NAME}" "${CONTENTS_DIR}/Info.plist"
 
+(
+cd "${ROOT_DIR}"
 swiftc \
   -sdk "${SDK_PATH}" \
   -target "${TARGET}" \
@@ -69,6 +72,10 @@ swiftc \
   -framework CoreImage \
   -framework WebKit \
   -framework UserNotifications
+)
+
+# 検査不能・検出時は署名/配布前に停止する。新規Python依存は不要。
+python3 "${ROOT_DIR}/scripts/verify_publication.py" --binary "${MACOS_DIR}/${APP_NAME}"
 
 if command -v codesign >/dev/null 2>&1; then
   # ad-hoc署名でも designated requirement を identifier 固定にして、

@@ -66,6 +66,16 @@ python3 scripts/verify_publication.py --ref HEAD
 
 検査はコミット後に実行する。未コミット・ignoredデータ、Git reflogや不要ref、未知のtoken形式、画像内の情報は網羅しない。外部へ送るrefを必ず限定し、未検査ファイルをReleaseへ添付しない。
 
+配布アプリの実行ファイルも検査する。元identityも検査する場合は同じ `--private-source-repo` を追加する。
+
+```bash
+./scripts/build_app.sh
+python3 scripts/verify_publication.py --binary build/EventRecorder.app/Contents/MacOS/EventRecorder
+codesign --verify --deep --strict build/EventRecorder.app
+```
+
+直接ビルドではソース列挙を相対pathへ変換し、リポジトリをcwdとしてswiftcを呼ぶ。出力先は従来どおり。単なるfile-prefix-mapでは個人pathが残ることを隔離ビルドで確認したため採用しない。署名identifier・macOS 13 target・アーキテクチャ判定は変更しない。Xcodeのビルド・dSYM・その他Release添付物は別途検査し、直接ビルドの結果だけで安全と断定しない。
+
 ## 調査根拠
 
 公開データは送信せず、Git公式仕様を確認した。確認日: 2026-10-05。
@@ -92,8 +102,30 @@ T1自己レビュー: 1/5 対象履歴の限定、2/5 tree・親・mode保持、
 
 Markdownの目次・見出し・表・フェンスを静的確認する。mdtsは環境に見つからず、新規依存を取得しないためブラウザpreviewは未実施。本資料は4項目の番号手順で足りるため新規Mermaid図を設けない。
 
-Context Compression: T1完了。元履歴は保持。T2/T3と最終検査が残る。push・既存アプリ・TCCは対象外。
+Context Compression: T1〜T3の実装・ローカル検証完了。元履歴は保持。push・インストール済みアプリ・TCCは対象外。フルXcodeとブラウザpreviewは未達。
 
 T2: 録画セッション・音声動画・鍵証明書・イベント・raw/診断/撮影ディレクトリをignoreに追加。公開画像と合成no-audio manifestは対象外。検査scriptと合成回帰テストを追加した。履歴で削除済みのsecret、非匿名metadata、同一blobの別pathも検査する。
 
 T2自己レビュー: 1/5 設計一致、2/5 過去blobと複数pathの網羅、3/5 合成テストと検出値非出力、4/5 README・運用手順同期、5/5 依存・CI・録画仕様不変はpass。検査用正規表現そのものをpathと誤判定するケースを修正し、自己検査を含むPython回帰8ケース成功。公開前の全履歴検査はコミット後に再実行する。
+
+T3自己レビュー: 1/5 相対ソースpathと既存出力先の維持、2/5 repo外cwdからの呼出し、3/5 旧バイナリを拒否し新バイナリを許可、4/5 README・実行手順同期、5/5 app source・署名identifier・CI不変はpass。ビルド時に検査が失敗した場合は署名前に終了する。
+
+| 実行した検査 | 結果 |
+| --- | --- |
+| `python3 scripts/test_publication.py` | 8ケース成功 |
+| `python3 scripts/verify_publication.py --ref HEAD`（元identity追加検査付き） | 匿名metadata、全公開blob/path、ignore、fixtureの検査成功 |
+| `/bin/bash -n scripts/build_app.sh` | 成功 |
+| `./scripts/build_app.sh`（repo内・repo外cwd） | 両方成功 |
+| 配布バイナリ検査（元identity追加検査付き） | 個人path・氏名・秘密情報の検出0件 |
+| 修正前のバイナリ検査 | 個人pathとidentityを検出し、終了1。検出値は非出力 |
+| `file build/EventRecorder.app/Contents/MacOS/EventRecorder` | arm64 Mach-O |
+| `codesign --verify --deep --strict build/EventRecorder.app` | 成功 |
+| `swift build` | 成功 |
+| `./scripts/verify_capture_finalization.sh` | 成功 |
+| `./scripts/verify_teams_presence.sh` | 成功 |
+| `./scripts/verify_teams_automation.sh` | 成功 |
+| `swift test` | 終了1、`XCTest not available`。フルXcodeが必要 |
+| Markdown fence検査 | 8資料で成功。ブラウザpreviewは未実施 |
+
+最終レビュー: 1/5 対象ゲート、2/5 CLIとビルドの最小実行、3/5 文書と生成appの同期、4/5 未達を含む報告、5/5 秘密検出・Xcode・previewの制限明記はpass。
+最終3パス: 要求充足（元履歴保持・公開範囲限定）、技術品質（回帰・ビルド・差分）、セキュリティ/運用（外部pushなし・権限変更なし）を確認した。本作業の検査通過を、実会議回帰やフルXcodeを含む製品全体のリリース合格とは扱わない。

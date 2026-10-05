@@ -94,6 +94,12 @@ python3 scripts/verify_publication.py --ref HEAD
 
 検査対象は指定refの全履歴です。専用secret scannerの代替保証ではありません。実manifest、録画、会議URLを含むイベントデータ、生の診断出力は公開しないでください。
 
+直接ビルドは相対ソースパスを使用し、署名前にバイナリの個人pathを検査します。Release添付前には別途検査できます。
+
+```bash
+python3 scripts/verify_publication.py --binary build/EventRecorder.app/Contents/MacOS/EventRecorder
+```
+
 ## 注意事項
 - 画面収録・システム音声・通知は macOS の権限許可が必要です。Teams自動録画にはAccessibility権限も必要です。
 - Teams自動監視は起動時OFFです。ログイン項目や常駐起動は登録しません。

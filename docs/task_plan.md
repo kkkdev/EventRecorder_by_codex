@@ -35,7 +35,7 @@
 
 ## 3. 前提
 
-- 対象ブランチ: `codex/public-release-sanitized`
+- 対象ブランチ: `main`（公開用ブランチから改名）
 - 実現可能性: `Yellow`
 - Blocker: なし
 - Open-ended: ScreenCaptureKit内部でsampleが届かない理由
